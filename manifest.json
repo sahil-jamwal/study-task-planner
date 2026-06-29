@@ -1,0 +1,11 @@
+{
+  "name": "StudyFlow Planner",
+  "short_name": "StudyFlow",
+  "description": "Personal task manager, study planner, smart scheduler, cloud sync, and calendar reminders.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": []
+}
