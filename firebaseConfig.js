@@ -4,12 +4,12 @@
 // Security comes from Firebase Authentication, Firestore security rules, and Google OAuth consent.
 
 export const firebaseConfig = {
-  apiKey: 'PASTE_FIREBASE_API_KEY',
-  authDomain: 'PASTE_PROJECT_ID.firebaseapp.com',
-  projectId: 'PASTE_PROJECT_ID',
-  storageBucket: 'PASTE_PROJECT_ID.firebasestorage.app',
-  messagingSenderId: 'PASTE_MESSAGING_SENDER_ID',
-  appId: 'PASTE_FIREBASE_APP_ID'
+  apiKey: "AIzaSyDQKOpvRni36ckRqO_i6cBZAw1PByjjax4",
+  authDomain: "study-task-planner-fea75.firebaseapp.com",
+  projectId: "study-task-planner-fea75",
+  storageBucket: "study-task-planner-fea75.firebasestorage.app",
+  messagingSenderId: "157108314711",
+  appId: "1:157108314711:web:44ec60c383006d08353912"
 };
 
 export const googleCalendarConfig = {
