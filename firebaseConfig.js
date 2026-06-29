@@ -14,7 +14,7 @@ export const firebaseConfig = {
 
 export const googleCalendarConfig = {
   // Create this in Google Cloud Console > APIs & Services > Credentials > OAuth client ID > Web application.
-  clientId: 'PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com',
+  clientId: '157108314711-dif66asggf80i56mdope2fni17pav832.apps.googleusercontent.com',
   calendarScope: 'https://www.googleapis.com/auth/calendar.events'
 };
 
