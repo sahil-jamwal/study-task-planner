@@ -18,6 +18,9 @@ const TEMPLATE_COLUMNS = [
 
 let state = loadState();
 let pendingImportRows = [];
+let activeChip = 'all';
+let activeStatus = 'active';
+let lastUndo = null;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -83,16 +86,9 @@ function escapeHTML(value) {
 function normalizeStatus(value) {
   const status = cleanText(value);
   const lookup = {
-    'not started': 'Not Started',
-    'pending': 'Not Started',
-    'todo': 'Not Started',
-    'to do': 'Not Started',
-    'in progress': 'In Progress',
-    'progress': 'In Progress',
-    'doing': 'In Progress',
-    'done': 'Done',
-    'completed': 'Done',
-    'complete': 'Done'
+    'not started': 'Not Started', 'pending': 'Not Started', 'todo': 'Not Started', 'to do': 'Not Started',
+    'in progress': 'In Progress', 'progress': 'In Progress', 'doing': 'In Progress',
+    'done': 'Done', 'completed': 'Done', 'complete': 'Done'
   };
   return lookup[status.toLowerCase()] || ['Not Started', 'In Progress', 'Done'].find((x) => x === status) || 'Not Started';
 }
@@ -201,9 +197,7 @@ function getItemDate(item) {
   return item.dueDate || getDatePart(item.reminderAt) || '';
 }
 
-function isPending(item) {
-  return item.status !== 'Done';
-}
+function isPending(item) { return item.status !== 'Done'; }
 
 function isDueToday(item) {
   const today = todayISO();
@@ -234,9 +228,7 @@ function formatDate(value) {
   const date = new Date(value.includes('T') ? value : `${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
+    day: '2-digit', month: 'short', year: 'numeric',
     ...(value.includes('T') ? { hour: '2-digit', minute: '2-digit' } : {})
   });
 }
@@ -245,33 +237,54 @@ function shortDate(value) {
   if (!value) return 'No date';
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
+  const today = todayISO();
+  if (value === today) return 'Today';
+  if (value === addDaysLocal(today, 1)) return 'Tomorrow';
   return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 }
 
-function showToast(message) {
-  const toast = $('#toast');
-  toast.textContent = message;
-  toast.classList.add('show');
-  clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => toast.classList.remove('show'), 2300);
+function addDaysLocal(iso, days) {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
-function setView(viewId) {
-  const titles = {
-    dashboard: 'Dashboard',
-    tasks: 'Task Manager',
-    study: 'Study Planner',
-    assignments: 'Assignment Tracker',
-    videos: 'Video Library',
-    daily: 'Daily Tracker',
-    excel: 'Excel Upload',
-    scheduler: 'Smart Scheduler',
-    settings: 'Settings'
-  };
+/* ---------------- Toast + Undo ---------------- */
+function showToast(message, undoFn) {
+  const toast = $('#toast');
+  $('#toastText').textContent = message;
+  const actionBtn = $('#toastAction');
+  if (undoFn) {
+    actionBtn.hidden = false;
+    actionBtn.textContent = 'Undo';
+    lastUndo = undoFn;
+  } else {
+    actionBtn.hidden = true;
+    lastUndo = null;
+  }
+  toast.classList.add('show');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => { toast.classList.remove('show'); lastUndo = null; }, undoFn ? 5000 : 2300);
+}
+
+/* ---------------- Navigation ---------------- */
+const VIEW_TITLES = { dashboard: 'Today', tasks: 'Tasks', scheduler: 'Plan', settings: 'Settings' };
+const VIEW_REDIRECT = { study: 'tasks', assignments: 'tasks', videos: 'tasks', daily: 'dashboard', excel: 'settings' };
+
+function setView(viewId, options = {}) {
+  if (VIEW_REDIRECT[viewId]) {
+    if (viewId === 'study') activeChip = 'Study';
+    if (viewId === 'assignments') activeChip = 'Assignment';
+    if (viewId === 'videos') activeChip = 'Video';
+    viewId = VIEW_REDIRECT[viewId];
+  }
+  if (options.chip) activeChip = options.chip;
   $$('.view').forEach((view) => view.classList.toggle('active-view', view.id === viewId));
   $$('.nav-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.view === viewId));
   $$('.mobile-nav-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.view === viewId));
-  $('#viewTitle').textContent = titles[viewId] || 'Dashboard';
+  $('#viewTitle').textContent = VIEW_TITLES[viewId] || 'Today';
+  if (viewId === 'tasks') syncChipUI();
+  closeAllMenus();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -280,53 +293,7 @@ function applyTheme() {
   $('#themeToggle').textContent = state.settings.theme === 'dark' ? '☀' : '☾';
 }
 
-function getFormItem() {
-  const existingId = $('#editingId').value;
-  const existing = existingId ? state.items.find((item) => item.id === existingId) : null;
-  const title = cleanText($('#title').value, 120);
-  if (!title) throw new Error('Please enter a task title.');
-
-  const youtubeLink = cleanText($('#youtubeLink').value, 300);
-  if (youtubeLink && !isHttpUrl(youtubeLink)) throw new Error('Video link must start with http:// or https://');
-
-  const status = normalizeStatus($('#status').value);
-  return normalizeItem({
-    id: existingId || uid(),
-    title,
-    category: $('#category').value,
-    subject: $('#subject').value,
-    topic: $('#topic').value,
-    youtubeLink,
-    assignment: $('#assignment').value,
-    dueDate: $('#dueDate').value,
-    reminderAt: $('#reminderAt').value,
-    priority: $('#priority').value,
-    status,
-    estimateMinutes: $('#estimateMinutes').value,
-    notes: $('#notes').value,
-    createdAt: existing?.createdAt || nowISO(),
-    completedAt: status === 'Done' ? (existing?.completedAt || nowISO()) : '',
-    source: existing?.source || '',
-    planId: existing?.planId || '',
-    scheduleKind: existing?.scheduleKind || '',
-    scheduledDate: existing?.scheduledDate || $('#dueDate').value,
-    subtopic: existing?.subtopic || '',
-    difficulty: existing?.difficulty || '',
-    revisionCount: existing?.revisionCount || 0,
-    missedReason: existing?.missedReason || '',
-    rescheduledDate: existing?.rescheduledDate || ''
-  });
-}
-
-function resetMainForm() {
-  $('#itemForm').reset();
-  $('#editingId').value = '';
-  $('#priority').value = 'Medium';
-  $('#status').value = 'Not Started';
-  $('#formTitle').textContent = 'Task details';
-  $('#cancelEdit').hidden = true;
-}
-
+/* ---------------- Item mutations ---------------- */
 function saveItem(item) {
   item.updatedAt = nowISO();
   item.deviceCreatedFrom = item.deviceCreatedFrom || navigator.userAgent.slice(0, 120);
@@ -339,36 +306,24 @@ function saveItem(item) {
 }
 
 function deleteItem(id) {
-  const item = state.items.find((entry) => entry.id === id);
-  if (!item) return;
-  if (!confirm(`Delete "${item.title}"?`)) return;
-  state.items = state.items.filter((entry) => entry.id !== id);
+  const index = state.items.findIndex((entry) => entry.id === id);
+  if (index < 0) return;
+  const [removed] = state.items.splice(index, 1);
   window.StudyFlowCloudSync?.deleteTask?.(id);
   saveState();
   renderAll();
-  showToast('Item deleted');
+  showToast(`Deleted “${removed.title}”`, () => {
+    state.items.splice(Math.min(index, state.items.length), 0, removed);
+    saveState();
+    renderAll();
+    showToast('Restored');
+  });
 }
 
 function editItem(id) {
   const item = state.items.find((entry) => entry.id === id);
   if (!item) return;
-  setView('tasks');
-  $('#editingId').value = item.id;
-  $('#title').value = item.title;
-  $('#category').value = item.category;
-  $('#priority').value = item.priority;
-  $('#subject').value = item.subject;
-  $('#topic').value = item.topic;
-  $('#youtubeLink').value = item.youtubeLink;
-  $('#assignment').value = item.assignment;
-  $('#dueDate').value = item.dueDate;
-  $('#reminderAt').value = item.reminderAt;
-  $('#status').value = item.status;
-  $('#estimateMinutes').value = item.estimateMinutes;
-  $('#notes').value = item.notes;
-  $('#formTitle').textContent = 'Edit item';
-  $('#cancelEdit').hidden = false;
-  $('#title').focus();
+  openAddDialog(item);
 }
 
 function toggleDone(id) {
@@ -398,6 +353,7 @@ function updateStatus(id, status) {
   renderAll();
 }
 
+/* ---------------- Calendar link ---------------- */
 function makeGoogleDate(date) {
   return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
@@ -414,14 +370,11 @@ function getCalendarUrl(item) {
     item.assignment ? `Assignment: ${item.assignment}` : '',
     item.youtubeLink ? `Video: ${item.youtubeLink}` : '',
     item.notes ? `Notes: ${item.notes}` : '',
-    'Created from StudyFlow Planner.'
+    'Created from StudyFlow.'
   ].filter(Boolean).join('\n');
-
   const params = new URLSearchParams({
-    action: 'TEMPLATE',
-    text: item.title,
-    dates: `${makeGoogleDate(start)}/${makeGoogleDate(end)}`,
-    details
+    action: 'TEMPLATE', text: item.title,
+    dates: `${makeGoogleDate(start)}/${makeGoogleDate(end)}`, details
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
@@ -437,106 +390,82 @@ function getYouTubeId(url) {
     const embed = parsed.pathname.match(/\/embed\/([^/?]+)/);
     if (embed) return embed[1];
     return '';
-  } catch {
-    return '';
-  }
+  } catch { return ''; }
+}
+
+/* ---------------- Cards ---------------- */
+function metaLine(item) {
+  const bits = [];
+  if (item.subject) bits.push(escapeHTML(item.subject));
+  if (item.topic) bits.push(escapeHTML(item.topic));
+  const date = getItemDate(item);
+  if (date) bits.push(shortDate(date));
+  if (item.estimateMinutes) bits.push(`${item.estimateMinutes} min`);
+  return bits.join(' · ');
 }
 
 function itemCard(item, options = {}) {
   const overdue = isOverdue(item);
+  const done = item.status === 'Done';
   const calendarUrl = getCalendarUrl(item);
-  const videoLink = item.youtubeLink && isHttpUrl(item.youtubeLink)
-    ? `<a class="action-btn" href="${escapeHTML(item.youtubeLink)}" target="_blank" rel="noopener">Open video</a>`
-    : '';
-  const calendarBtn = calendarUrl
-    ? `<a class="action-btn" href="${escapeHTML(calendarUrl)}" target="_blank" rel="noopener">Google Calendar</a>`
-    : '';
-  const compact = options.compact ? ' compact-card' : '';
+  const videoUrl = item.youtubeLink && isHttpUrl(item.youtubeLink) ? item.youtubeLink : '';
+  const inProgress = item.status === 'In Progress';
+  const tagBits = [];
+  if (item.category && item.category !== 'Task') tagBits.push(`<span class="tag tag-${item.category.toLowerCase()}">${escapeHTML(item.category)}</span>`);
+  if (item.priority === 'High' && !done) tagBits.push('<span class="tag tag-high">High</span>');
+  if (overdue) tagBits.push('<span class="tag tag-overdue">Overdue</span>');
+  if (item.scheduleKind) tagBits.push(`<span class="tag">${escapeHTML(item.scheduleKind)}</span>`);
+
   return `
-    <article class="item-card ${item.status === 'Done' ? 'done' : ''} ${overdue ? 'overdue-card' : ''}${compact}" data-id="${escapeHTML(item.id)}">
-      <div class="item-top">
-        <div>
-          <h4 class="item-title">${escapeHTML(item.title)}</h4>
-          <div class="badge-row">
-            <span class="badge">${escapeHTML(item.category)}</span>
-            <span class="badge priority-${item.priority.toLowerCase()}">${escapeHTML(item.priority)}</span>
-            <span class="badge status-${item.status.toLowerCase().replaceAll(' ', '-')}">${escapeHTML(item.status)}</span>
-            ${item.scheduleKind ? `<span class="badge">${escapeHTML(item.scheduleKind)}</span>` : ''}
-            ${item.googleCalendarEventId ? '<span class="badge status-done">Calendar synced</span>' : ''}
-            ${item.calendarSyncStatus === 'failed' ? '<span class="badge priority-high">Calendar failed</span>' : ''}
-            ${item.syncStatus === 'pending' ? '<span class="badge priority-medium">Cloud pending</span>' : ''}
-            ${overdue ? '<span class="badge priority-high">Overdue</span>' : ''}
-          </div>
+    <article class="item-card ${done ? 'done' : ''} ${overdue ? 'overdue-card' : ''}" data-id="${escapeHTML(item.id)}">
+      <button class="check ${done ? 'checked' : ''}" data-action="toggle" data-id="${escapeHTML(item.id)}" type="button" aria-label="${done ? 'Mark not done' : 'Mark done'}">${done ? '✓' : ''}</button>
+      <div class="item-body" data-action="edit" data-id="${escapeHTML(item.id)}">
+        <p class="item-title">${escapeHTML(item.title)}</p>
+        ${metaLine(item) ? `<p class="item-meta">${metaLine(item)}</p>` : ''}
+        ${item.assignment && options.showAssignment !== false ? `<p class="item-assignment">${escapeHTML(item.assignment)}</p>` : ''}
+        ${tagBits.length ? `<div class="tag-row">${tagBits.join('')}</div>` : ''}
+      </div>
+      <div class="card-menu-wrap">
+        <button class="menu-btn" data-action="menu" data-id="${escapeHTML(item.id)}" type="button" aria-label="More actions">⋯</button>
+        <div class="card-menu" hidden>
+          <button data-action="edit" data-id="${escapeHTML(item.id)}" type="button">Edit</button>
+          ${!done ? `<button data-action="progress" data-id="${escapeHTML(item.id)}" type="button">${inProgress ? 'In progress' : 'Start'}</button>` : ''}
+          ${videoUrl ? `<a href="${escapeHTML(videoUrl)}" target="_blank" rel="noopener">Open video</a>` : ''}
+          ${calendarUrl ? `<a href="${escapeHTML(calendarUrl)}" target="_blank" rel="noopener">Add to Calendar</a>` : ''}
+          <button class="danger" data-action="delete" data-id="${escapeHTML(item.id)}" type="button">Delete</button>
         </div>
-        <button class="action-btn success" data-action="toggle" data-id="${escapeHTML(item.id)}" type="button">${item.status === 'Done' ? 'Undo' : 'Done'}</button>
-      </div>
-      <div class="meta-row">
-        ${item.subject ? `<span>Subject: ${escapeHTML(item.subject)}</span>` : ''}
-        ${item.topic ? `<span>Topic: ${escapeHTML(item.topic)}</span>` : ''}
-        ${item.dueDate ? `<span>Due: ${escapeHTML(formatDate(item.dueDate))}</span>` : ''}
-        ${item.reminderAt ? `<span>Reminder: ${escapeHTML(formatDate(item.reminderAt))}</span>` : ''}
-        ${item.estimateMinutes ? `<span>${escapeHTML(item.estimateMinutes)} min</span>` : ''}
-      </div>
-      ${item.assignment ? `<p class="assignment-text"><strong>Assignment:</strong> ${escapeHTML(item.assignment)}</p>` : ''}
-      ${item.notes && !options.compact ? `<p class="notes-text">${escapeHTML(item.notes)}</p>` : ''}
-      <div class="card-actions">
-        <button class="action-btn" data-action="edit" data-id="${escapeHTML(item.id)}" type="button">Edit</button>
-        <button class="action-btn" data-action="progress" data-id="${escapeHTML(item.id)}" type="button">Start</button>
-        ${videoLink}
-        ${calendarBtn}
-        <button class="action-btn" data-action="sync-calendar" data-id="${escapeHTML(item.id)}" type="button">Auto calendar</button>
-        <button class="action-btn danger" data-action="delete" data-id="${escapeHTML(item.id)}" type="button">Delete</button>
       </div>
     </article>
   `;
 }
 
-function emptyState(title, text) {
-  return `<div class="empty-state"><strong>${escapeHTML(title)}</strong><p>${escapeHTML(text)}</p></div>`;
+function emptyState(title, text, actionLabel, actionView) {
+  const btn = actionLabel ? `<button class="primary-btn" data-empty-action="${escapeHTML(actionView || '')}" type="button">${escapeHTML(actionLabel)}</button>` : '';
+  return `<div class="empty-state"><div class="empty-mark">✶</div><strong>${escapeHTML(title)}</strong><p>${escapeHTML(text)}</p>${btn}</div>`;
 }
 
-function compactItem(item, type = 'default') {
-  const link = item.youtubeLink && isHttpUrl(item.youtubeLink)
-    ? `<a href="${escapeHTML(item.youtubeLink)}" target="_blank" rel="noopener">Open video</a>`
-    : '';
-  return `
-    <article class="compact-item">
-      <strong>${escapeHTML(item.title)}</strong>
-      <p class="muted">${escapeHTML([item.subject, item.topic, shortDate(getItemDate(item))].filter(Boolean).join(' • '))}</p>
-      ${type === 'video' ? link : ''}
-      ${type === 'assignment' && item.assignment ? `<p>${escapeHTML(item.assignment)}</p>` : ''}
-    </article>
-  `;
-}
-
-function videoCard(item) {
-  const id = getYouTubeId(item.youtubeLink);
-  const thumbText = id ? '▶' : 'Video';
-  return `
-    <article class="video-card">
-      <div class="video-thumb">${escapeHTML(thumbText)}</div>
-      <h3>${escapeHTML(item.title)}</h3>
-      <p class="muted">${escapeHTML([item.subject, item.topic].filter(Boolean).join(' • ') || 'Saved learning video')}</p>
-      <a href="${escapeHTML(item.youtubeLink)}" target="_blank" rel="noopener">Open YouTube link</a>
-    </article>
-  `;
+/* ---------------- Filters ---------------- */
+function matchesChip(item, chip) {
+  if (chip === 'all') return true;
+  if (chip === 'Study') return item.category === 'Study';
+  if (chip === 'Assignment') return item.category === 'Assignment' || Boolean(item.assignment);
+  if (chip === 'Video') return Boolean(item.youtubeLink) && isHttpUrl(item.youtubeLink);
+  return true;
 }
 
 function getFilteredItems() {
-  const search = cleanText($('#searchInput').value).toLowerCase();
-  const status = $('#statusFilter').value;
-  const category = $('#categoryFilter').value;
-  const dateFilter = $('#dateFilter').value;
-
+  const search = cleanText($('#searchInput')?.value).toLowerCase();
+  const when = $('#whenFilter')?.value || 'all';
   return state.items.filter((item) => {
+    if (!matchesChip(item, activeChip)) return false;
+    if (activeStatus === 'active' && item.status === 'Done') return false;
+    if (activeStatus === 'Done' && item.status !== 'Done') return false;
     const haystack = [item.title, item.subject, item.topic, item.assignment, item.notes].join(' ').toLowerCase();
     if (search && !haystack.includes(search)) return false;
-    if (status !== 'all' && item.status !== status) return false;
-    if (category !== 'all' && item.category !== category) return false;
-    if (dateFilter === 'today' && !isDueToday(item)) return false;
-    if (dateFilter === 'week' && !isWithinNextDays(item, 7)) return false;
-    if (dateFilter === 'overdue' && !isOverdue(item)) return false;
-    if (dateFilter === 'noDate' && getItemDate(item)) return false;
+    if (when === 'today' && !isDueToday(item)) return false;
+    if (when === 'week' && !isWithinNextDays(item, 7)) return false;
+    if (when === 'overdue' && !isOverdue(item)) return false;
+    if (when === 'noDate' && getItemDate(item)) return false;
     return true;
   }).sort(sortSmart);
 }
@@ -555,7 +484,7 @@ function sortSmart(a, b) {
 }
 
 function sortTodayItems(items) {
-  const mode = $('#todaySort').value;
+  const mode = $('#todaySort')?.value || 'smart';
   const copy = [...items];
   if (mode === 'priority') return copy.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority));
   if (mode === 'time') return copy.sort((a, b) => (a.reminderAt || '9999').localeCompare(b.reminderAt || '9999'));
@@ -569,73 +498,87 @@ function calculateTodayProgress() {
   return Math.round((done / todayItems.length) * 100);
 }
 
-function calculateStudyProgress() {
-  const study = state.items.filter((item) => item.category === 'Study');
-  if (!study.length) return 0;
-  return Math.round((study.filter((item) => item.status === 'Done').length / study.length) * 100);
+/* ---------------- Render: Today ---------------- */
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
 }
 
-function renderDashboard() {
-  const today = todayISO();
-  const todayItems = sortTodayItems(state.items.filter((item) => isDueToday(item) || isOverdue(item)));
-  const pending = state.items.filter(isPending);
+function renderToday() {
+  const todayItems = sortTodayItems(state.items.filter((item) => (isDueToday(item) || isOverdue(item))));
+  const pendingToday = todayItems.filter(isPending);
   const overdue = state.items.filter(isOverdue);
-  const completedToday = state.items.filter((item) => item.completedAt && item.completedAt.slice(0, 10) === today);
-  const assignments = state.items.filter((item) => item.category === 'Assignment' || item.assignment);
+  const progress = calculateTodayProgress();
 
-  $('#todayCount').textContent = state.items.filter(isDueToday).length;
-  $('#overdueCount').textContent = overdue.length;
-  $('#pendingCount').textContent = pending.length;
-  $('#completedTodayCount').textContent = completedToday.length;
-  const calendarPending = state.items.filter((item) => item.status !== 'Done' && (item.reminderAt || item.dueDate) && item.calendarSyncStatus !== 'synced').length;
-  const dashboardSync = $('#dashboardSyncStatus');
-  if (dashboardSync) {
-    const user = window.StudyFlowCloudSync?.getUser?.();
-    dashboardSync.innerHTML = `
-      <strong>${escapeHTML(user ? 'Cloud sync active' : 'Local mode')}</strong>
-      <p class="muted">${escapeHTML(user ? 'Your signed-in data can sync across devices.' : 'Sign in from Settings to access the same data on laptop and phone.')}</p>
-      <span class="pill">${calendarPending} calendar pending</span>
-    `;
+  const remaining = pendingToday.length;
+  $('#greetingText').textContent = remaining
+    ? `${greeting()}. ${remaining} thing${remaining > 1 ? 's' : ''} left today.`
+    : `${greeting()}. You're all clear for today.`;
+  $('#todayProgressBar').style.width = `${progress}%`;
+  $('#todayProgressText').textContent = `${progress}%`;
+  $('#sidebarProgressBar').style.width = `${progress}%`;
+  $('#sidebarProgressText').textContent = `${progress}%`;
+
+  // Next up = first pending item (today/overdue first, else any pending)
+  const nextUp = pendingToday[0] || state.items.filter(isPending).sort(sortSmart)[0];
+  const nextWrap = $('#nextUpWrap');
+  if (nextUp) {
+    nextWrap.innerHTML = `
+      <div class="next-up-card">
+        <p class="next-up-title">${escapeHTML(nextUp.title)}</p>
+        ${metaLine(nextUp) ? `<p class="next-up-meta">${metaLine(nextUp)}</p>` : ''}
+        ${nextUp.assignment ? `<p class="next-up-assignment">${escapeHTML(nextUp.assignment)}</p>` : ''}
+        <div class="next-up-actions">
+          <button class="primary-btn" data-action="toggle" data-id="${escapeHTML(nextUp.id)}" type="button">Mark done</button>
+          <button class="soft-btn" data-action="focus" type="button">Focus</button>
+          ${nextUp.youtubeLink && isHttpUrl(nextUp.youtubeLink) ? `<a class="soft-btn" href="${escapeHTML(nextUp.youtubeLink)}" target="_blank" rel="noopener">Open video</a>` : ''}
+        </div>
+      </div>`;
+    $('#nextUpBlock').hidden = false;
+  } else {
+    nextWrap.innerHTML = emptyState('Nothing queued', 'Add a task or generate a study plan to get started.', '+ Add task', 'add');
+    $('#nextUpBlock').hidden = false;
   }
 
-  const progress = calculateTodayProgress();
-  $('#sidebarProgressBar').style.width = `${progress}%`;
-  $('#sidebarProgressText').textContent = `${progress}% complete`;
+  // Overdue nudge
+  const nudge = $('#overdueNudge');
+  if (overdue.length) {
+    nudge.hidden = false;
+    nudge.innerHTML = `<span>⚠ ${overdue.length} overdue item${overdue.length > 1 ? 's' : ''}.</span> <button class="link-btn" data-overdue-jump type="button">Review</button>`;
+  } else {
+    nudge.hidden = true;
+  }
 
-  $('#todayHeadline').textContent = todayItems.length
-    ? `${todayItems.length} item${todayItems.length > 1 ? 's' : ''} need your attention today`
-    : 'Your day is clear';
-  $('#todaySubtext').textContent = todayItems.length
-    ? 'Finish overdue work first, then complete today’s study topics and assignments.'
-    : 'Add a task or study topic to start planning your day.';
+  // Today list (the rest after next-up)
+  const rest = todayItems.filter((item) => item.id !== nextUp?.id);
+  $('#todayListWrap').innerHTML = rest.length
+    ? rest.map((item) => itemCard(item)).join('')
+    : (todayItems.length ? '' : emptyState('Your day is clear', 'No tasks due today. Enjoy it, or plan ahead.', null));
 
-  $('#todayList').innerHTML = todayItems.length
-    ? todayItems.map((item) => itemCard(item)).join('')
-    : emptyState('No work due today', 'Add study topics, assignments, or reminders to build your daily plan.');
+  // Reflection note
+  const today = todayISO();
+  const note = $('#reflectionNote');
+  if (note && document.activeElement !== note) note.value = state.dailyNotes[today] || '';
+}
 
-  const videos = state.items.filter((item) => item.youtubeLink && isPending(item)).sort(sortSmart).slice(0, 4);
-  $('#nextVideos').innerHTML = videos.length
-    ? videos.map((item) => compactItem(item, 'video')).join('')
-    : emptyState('No videos saved', 'Add YouTube links inside study topics.');
-
-  const upcomingAssignments = assignments.filter(isPending).sort(sortSmart).slice(0, 4);
-  $('#upcomingAssignments').innerHTML = upcomingAssignments.length
-    ? upcomingAssignments.map((item) => compactItem(item, 'assignment')).join('')
-    : emptyState('No assignments pending', 'Add assignments to track deadlines clearly.');
-
-  const studyProgress = calculateStudyProgress();
-  const ring = $('#studyProgressRing');
-  ring.style.background = `conic-gradient(var(--primary) ${studyProgress * 3.6}deg, var(--border-soft) 0deg)`;
-  ring.dataset.value = `${studyProgress}%`;
-  $('#studyProgressText').textContent = `${studyProgress}%`;
+/* ---------------- Render: Tasks ---------------- */
+function syncChipUI() {
+  $$('#taskChips .chip').forEach((c) => c.classList.toggle('active', c.dataset.chip === activeChip));
+  $$('#statusSeg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.status === activeStatus));
 }
 
 function renderTasks() {
+  syncChipUI();
   const items = getFilteredItems();
   $('#resultCount').textContent = `${items.length} item${items.length === 1 ? '' : 's'}`;
-  $('#allItems').innerHTML = items.length
-    ? items.map((item) => itemCard(item)).join('')
-    : emptyState('No matching items', 'Try changing filters or add a new task.');
+
+  const emptyMsg = state.items.length
+    ? emptyState('No matching tasks', 'Try a different filter or search.', null)
+    : emptyState('No tasks yet', 'Capture your first task — it takes seconds.', '+ Add task', 'add');
+
+  $('#allItems').innerHTML = items.length ? items.map((item) => itemCard(item)).join('') : emptyMsg;
 
   const statuses = ['Not Started', 'In Progress', 'Done'];
   $('#boardItems').innerHTML = statuses.map((status) => {
@@ -644,10 +587,9 @@ function renderTasks() {
       <section class="board-column">
         <h4>${escapeHTML(status)} <span class="pill">${columnItems.length}</span></h4>
         <div class="card-list">
-          ${columnItems.length ? columnItems.map((item) => itemCard(item, { compact: true })).join('') : emptyState('Nothing here', 'Move or add tasks.')}
+          ${columnItems.length ? columnItems.map((item) => itemCard(item)).join('') : '<p class="muted small">Empty</p>'}
         </div>
-      </section>
-    `;
+      </section>`;
   }).join('');
 
   $('#allItems').hidden = Boolean(state.settings.boardView);
@@ -656,148 +598,145 @@ function renderTasks() {
   $('#boardViewBtn').classList.toggle('active', Boolean(state.settings.boardView));
 }
 
-function renderStudy() {
-  const study = state.items.filter((item) => item.category === 'Study').sort(sortSmart);
-  $('#studyCount').textContent = study.length;
-  $('#studyList').innerHTML = study.length
-    ? study.map((item) => itemCard(item)).join('')
-    : emptyState('No study topics yet', 'Add subject, topic, video, assignment, and due date.');
-}
-
-function renderAssignments() {
-  const items = state.items.filter((item) => item.category === 'Assignment' || item.assignment).sort(sortSmart);
-  $('#assignmentList').innerHTML = items.length
-    ? items.map((item) => itemCard(item)).join('')
-    : emptyState('No assignments yet', 'Add assignment details in Task Manager or Study Planner.');
-}
-
-function renderVideos() {
-  const videos = state.items.filter((item) => item.youtubeLink && isHttpUrl(item.youtubeLink)).sort(sortSmart);
-  $('#videoList').innerHTML = videos.length
-    ? videos.map(videoCard).join('')
-    : emptyState('No video links yet', 'Save YouTube links with your study topics.');
-}
-
-function renderDaily() {
-  const selectedDate = $('#dailyDate').value || todayISO();
-  $('#dailyDate').value = selectedDate;
-  $('#dailyNote').value = state.dailyNotes[selectedDate] || '';
-
-  const items = state.items.filter((item) => item.dueDate === selectedDate || getDatePart(item.reminderAt) === selectedDate).sort(sortSmart);
-  const done = items.filter((item) => item.status === 'Done').length;
-  const score = items.length ? Math.round((done / items.length) * 100) : 0;
-  $('#dailyScore').textContent = `${score}%`;
-  $('#dailyChecklist').innerHTML = items.length
-    ? items.map((item) => itemCard(item)).join('')
-    : emptyState('No checklist for this date', 'Add due dates or reminders to see daily tasks here.');
-}
-
+/* ---------------- Render all ---------------- */
 function renderAll() {
   const dateText = new Date(`${todayISO()}T00:00:00`).toLocaleDateString('en-IN', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
   });
   $('#currentDate').textContent = dateText;
-  renderDashboard();
+  updateAccountBadge();
+  renderToday();
   renderTasks();
-  renderStudy();
   if (typeof renderScheduler === 'function') renderScheduler();
-  renderAssignments();
-  renderVideos();
-  renderDaily();
 }
 
-function createStudyItemFromForm() {
-  const subject = cleanText($('#studySubject').value, 80);
-  const topic = cleanText($('#studyTopic').value, 120);
-  if (!subject || !topic) throw new Error('Subject and topic are required.');
-  const youtubeLink = cleanText($('#studyVideo').value, 300);
+function updateAccountBadge() {
+  const user = window.StudyFlowCloudSync?.getUser?.();
+  const badge = $('#accountModeBadge');
+  if (badge && !user) badge.textContent = 'Local only';
+}
+
+/* ---------------- Unified Add / Edit dialog ---------------- */
+function openAddDialog(item = null) {
+  const dialog = $('#addDialog');
+  $('#addEditingId').value = item?.id || '';
+  $('#addDialogTitle').textContent = item ? 'Edit task' : 'Add task';
+  $('#addTitle').value = item?.title || '';
+  $('#addCategory').value = item?.category || 'Task';
+  $('#addPriority').value = item?.priority || 'Medium';
+  $('#addDueDate').value = item?.dueDate || '';
+  $('#addReminderAt').value = item?.reminderAt || '';
+  $('#addSubject').value = item?.subject || '';
+  $('#addTopic').value = item?.topic || '';
+  $('#addYoutube').value = item?.youtubeLink || '';
+  $('#addAssignment').value = item?.assignment || '';
+  $('#addEstimate').value = item?.estimateMinutes || '';
+  $('#addStatus').value = item?.status || 'Not Started';
+  $('#addNotes').value = item?.notes || '';
+  // Expand advanced if any advanced field is set
+  const hasAdvanced = item && (item.subject || item.topic || item.youtubeLink || item.assignment || item.estimateMinutes || item.notes || item.status === 'In Progress');
+  setAdvanced(Boolean(hasAdvanced));
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+  setTimeout(() => $('#addTitle').focus(), 30);
+}
+
+function setAdvanced(open) {
+  $('#addAdvanced').hidden = !open;
+  $('#addMoreToggle').setAttribute('aria-expanded', String(open));
+  $('#addMoreToggle').textContent = open ? 'Fewer details ▴' : 'More details ▾';
+}
+
+function buildItemFromDialog() {
+  const id = $('#addEditingId').value;
+  const existing = id ? state.items.find((i) => i.id === id) : null;
+  const title = cleanText($('#addTitle').value, 120);
+  if (!title) throw new Error('Please enter a title.');
+  const youtubeLink = cleanText($('#addYoutube').value, 300);
   if (youtubeLink && !isHttpUrl(youtubeLink)) throw new Error('Video link must start with http:// or https://');
+  const status = normalizeStatus($('#addStatus').value);
   return normalizeItem({
-    title: `${subject}: ${topic}`,
-    category: 'Study',
-    subject,
-    topic,
-    youtubeLink,
-    assignment: $('#studyAssignment').value,
-    dueDate: $('#studyDueDate').value,
-    reminderAt: $('#studyReminderAt').value,
-    priority: $('#studyPriority').value,
-    estimateMinutes: $('#studyEstimateMinutes').value,
-    status: 'Not Started',
-    notes: $('#studyNotes').value
-  });
-}
-
-function buildQuickItem() {
-  const title = cleanText($('#quickTitle').value, 120);
-  if (!title) throw new Error('Please enter a task title.');
-  return normalizeItem({
+    id: id || uid(),
     title,
-    category: $('#quickCategory').value,
-    dueDate: $('#quickDueDate').value,
-    reminderAt: $('#quickReminderAt').value,
-    priority: $('#quickPriority').value,
-    status: 'Not Started'
+    category: $('#addCategory').value,
+    subject: $('#addSubject').value,
+    topic: $('#addTopic').value,
+    youtubeLink,
+    assignment: $('#addAssignment').value,
+    dueDate: $('#addDueDate').value,
+    reminderAt: $('#addReminderAt').value,
+    priority: $('#addPriority').value,
+    status,
+    estimateMinutes: $('#addEstimate').value,
+    notes: $('#addNotes').value,
+    createdAt: existing?.createdAt || nowISO(),
+    completedAt: status === 'Done' ? (existing?.completedAt || nowISO()) : '',
+    source: existing?.source || '',
+    planId: existing?.planId || '',
+    scheduleKind: existing?.scheduleKind || '',
+    scheduledDate: existing?.scheduledDate || $('#addDueDate').value,
+    subtopic: existing?.subtopic || '',
+    difficulty: existing?.difficulty || '',
+    revisionCount: existing?.revisionCount || 0,
+    missedReason: existing?.missedReason || '',
+    rescheduledDate: existing?.rescheduledDate || ''
   });
 }
 
-function handleItemAction(event) {
-  const button = event.target.closest('[data-action]');
-  if (!button) return;
-  const id = button.dataset.id;
-  const action = button.dataset.action;
-  if (action === 'edit') editItem(id);
-  if (action === 'delete') deleteItem(id);
-  if (action === 'toggle') toggleDone(id);
-  if (action === 'progress') updateStatus(id, 'In Progress');
-  if (action === 'sync-calendar') window.StudyFlowCalendar?.createOrUpdateEvent?.(id);
+/* ---------------- Overflow menus ---------------- */
+function closeAllMenus(except) {
+  $$('.card-menu').forEach((menu) => { if (menu !== except) menu.hidden = true; });
 }
 
+/* ---------------- Focus mode ---------------- */
+function openFocusMode() {
+  const item = state.items.filter(isPending).sort(sortSmart)[0];
+  const dialog = $('#focusDialog');
+  if (!item) {
+    $('#focusContent').innerHTML = emptyState('Nothing pending', 'You have no pending tasks right now.', null);
+  } else {
+    $('#focusContent').innerHTML = `
+      <div class="focus-card">
+        <span class="tag tag-${item.priority.toLowerCase()}">${escapeHTML(item.priority)}</span>
+        <h4>${escapeHTML(item.title)}</h4>
+        <p class="muted">${escapeHTML([item.subject, item.topic, item.dueDate ? `Due ${formatDate(item.dueDate)}` : ''].filter(Boolean).join(' • '))}</p>
+        ${item.assignment ? `<p class="item-assignment">${escapeHTML(item.assignment)}</p>` : ''}
+        <div class="form-actions" style="justify-content:center;margin-top:14px;">
+          <button class="primary-btn" data-action="toggle" data-id="${escapeHTML(item.id)}" type="button">Mark done</button>
+          <button class="soft-btn" data-action="progress" data-id="${escapeHTML(item.id)}" type="button">Start</button>
+        </div>
+      </div>`;
+  }
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+}
+
+/* ---------------- Excel ---------------- */
 function renderExcelPreview(rows, errors = []) {
   pendingImportRows = rows;
   $('#importRows').disabled = rows.length === 0;
   $('#clearPreview').disabled = rows.length === 0 && errors.length === 0;
   $('#importSummary').hidden = false;
-  $('#importSummary').innerHTML = `${rows.length} valid row${rows.length === 1 ? '' : 's'} ready. ${errors.length ? `${errors.length} row${errors.length === 1 ? '' : 's'} skipped because title was missing.` : ''}`;
+  $('#importSummary').innerHTML = `${rows.length} valid row${rows.length === 1 ? '' : 's'} ready. ${errors.length ? `${errors.length} row${errors.length === 1 ? '' : 's'} skipped (missing title).` : ''}`;
 
   if (!rows.length) {
-    $('#excelPreview').innerHTML = emptyState('No valid rows found', 'Check that your file contains the Task Title column.');
+    $('#excelPreview').innerHTML = emptyState('No valid rows', 'Make sure your file has a Task Title column.', null);
     return;
   }
-
   const header = TEMPLATE_COLUMNS.map((col) => `<th>${escapeHTML(col)}</th>`).join('');
   const body = rows.slice(0, 25).map((item) => `
     <tr>
-      <td>${escapeHTML(item.title)}</td>
-      <td>${escapeHTML(item.category)}</td>
-      <td>${escapeHTML(item.subject)}</td>
-      <td>${escapeHTML(item.topic)}</td>
-      <td>${escapeHTML(item.youtubeLink)}</td>
-      <td>${escapeHTML(item.assignment)}</td>
-      <td>${escapeHTML(item.dueDate)}</td>
-      <td>${escapeHTML(item.reminderAt)}</td>
-      <td>${escapeHTML(item.priority)}</td>
-      <td>${escapeHTML(item.status)}</td>
-      <td>${escapeHTML(item.estimateMinutes)}</td>
-      <td>${escapeHTML(item.notes)}</td>
-    </tr>
-  `).join('');
-
+      <td>${escapeHTML(item.title)}</td><td>${escapeHTML(item.category)}</td><td>${escapeHTML(item.subject)}</td>
+      <td>${escapeHTML(item.topic)}</td><td>${escapeHTML(item.youtubeLink)}</td><td>${escapeHTML(item.assignment)}</td>
+      <td>${escapeHTML(item.dueDate)}</td><td>${escapeHTML(item.reminderAt)}</td><td>${escapeHTML(item.priority)}</td>
+      <td>${escapeHTML(item.status)}</td><td>${escapeHTML(item.estimateMinutes)}</td><td>${escapeHTML(item.notes)}</td>
+    </tr>`).join('');
   $('#excelPreview').innerHTML = `
-    <table class="preview-table">
-      <thead><tr>${header}</tr></thead>
-      <tbody>${body}</tbody>
-    </table>
-    ${rows.length > 25 ? `<p class="muted">Showing first 25 of ${rows.length} rows.</p>` : ''}
-  `;
+    <table class="preview-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>
+    ${rows.length > 25 ? `<p class="muted">Showing first 25 of ${rows.length} rows.</p>` : ''}`;
 }
 
 function handleExcelFile(file) {
   if (!file) return;
-  if (!window.XLSX) {
-    showToast('SheetJS library not loaded. Connect internet and reload once for Excel upload.');
-    return;
-  }
+  if (!window.XLSX) { showToast('Spreadsheet library still loading — reload once online.'); return; }
   const reader = new FileReader();
   reader.onload = (event) => {
     try {
@@ -807,31 +746,24 @@ function handleExcelFile(file) {
       const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
       const rows = [];
       const errors = [];
-
       json.forEach((row, index) => {
         const item = normalizeItem({
           title: row['Task Title'] || row.Title || row.Task || row.task,
-          category: row.Category,
-          subject: row.Subject,
-          topic: row.Topic,
+          category: row.Category, subject: row.Subject, topic: row.Topic,
           youtubeLink: row['YouTube Link'] || row.Video || row['Video Link'],
-          assignment: row.Assignment,
-          dueDate: row['Due Date'],
+          assignment: row.Assignment, dueDate: row['Due Date'],
           reminderAt: row['Reminder Date Time'] || row.Reminder,
-          priority: row.Priority,
-          status: row.Status,
-          estimateMinutes: row['Estimated Minutes'],
-          notes: row.Notes
+          priority: row.Priority, status: row.Status,
+          estimateMinutes: row['Estimated Minutes'], notes: row.Notes
         });
         if (!item.title) errors.push(index + 2);
         else rows.push(item);
       });
-
       renderExcelPreview(rows, errors);
       showToast('Excel preview ready');
     } catch (error) {
       console.error(error);
-      showToast('Could not read this Excel file. Please check the format.');
+      showToast('Could not read that file. Check the format.');
     }
   };
   reader.readAsArrayBuffer(file);
@@ -860,15 +792,12 @@ function downloadBlob(content, filename, type) {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
+  link.href = url; link.download = filename; link.click();
   URL.revokeObjectURL(url);
 }
 
 function exportBackup() {
-  const content = JSON.stringify(state, null, 2);
-  downloadBlob(content, `studyflow_backup_${todayISO()}.json`, 'application/json');
+  downloadBlob(JSON.stringify(state, null, 2), `studyflow_backup_${todayISO()}.json`, 'application/json');
   showToast('Backup exported');
 }
 
@@ -880,16 +809,13 @@ function importBackup(file) {
       const imported = JSON.parse(event.target.result);
       if (!Array.isArray(imported.items)) throw new Error('Invalid backup');
       state = {
-        ...cloneDefault(),
-        ...imported,
+        ...cloneDefault(), ...imported,
         items: imported.items.map(normalizeItem),
         dailyNotes: imported.dailyNotes || {},
         studyPlans: Array.isArray(imported.studyPlans) ? imported.studyPlans : [],
         settings: { ...DEFAULT_STATE.settings, ...(imported.settings || {}) }
       };
-      saveState();
-      applyTheme();
-      renderAll();
+      saveState(); applyTheme(); renderAll();
       showToast('Backup imported');
     } catch (error) {
       console.error(error);
@@ -899,139 +825,112 @@ function importBackup(file) {
   reader.readAsText(file);
 }
 
-function openFocusMode() {
-  const item = state.items.filter(isPending).sort(sortSmart)[0];
-  const dialog = $('#focusDialog');
-  if (!item) {
-    $('#focusContent').innerHTML = emptyState('Nothing pending', 'You have no pending tasks right now.');
-  } else {
-    $('#focusContent').innerHTML = `
-      <div class="focus-card">
-        <span class="badge priority-${item.priority.toLowerCase()}">${escapeHTML(item.priority)}</span>
-        <h4>${escapeHTML(item.title)}</h4>
-        <p class="muted">${escapeHTML([item.subject, item.topic, item.dueDate ? `Due ${formatDate(item.dueDate)}` : ''].filter(Boolean).join(' • '))}</p>
-        ${item.assignment ? `<p class="assignment-text">${escapeHTML(item.assignment)}</p>` : ''}
-        <div class="form-actions" style="justify-content:center;margin-top:14px;">
-          <button class="primary-btn" data-action="toggle" data-id="${escapeHTML(item.id)}" type="button">Mark done</button>
-          <button class="soft-btn" data-action="progress" data-id="${escapeHTML(item.id)}" type="button">Start</button>
-        </div>
-      </div>
-    `;
-  }
-  if (typeof dialog.showModal === 'function') dialog.showModal();
-}
-
+/* ---------------- Demo seed (dev only) ---------------- */
 function seedDemoData() {
-  // Demo data is now opt-in so a fresh phone/laptop does not accidentally mix sample tasks with cloud data.
   if (!new URLSearchParams(location.search).has('demo')) return;
   if (state.items.length) return;
   const today = todayISO();
   state.items = [
-    normalizeItem({
-      title: 'Watch SQL Joins video', category: 'Study', subject: 'SQL', topic: 'Joins',
-      youtubeLink: 'https://www.youtube.com/', assignment: 'Practice 10 join questions', dueDate: today,
-      reminderAt: `${today}T19:00`, priority: 'High', status: 'Not Started', estimateMinutes: 45,
-      notes: 'Focus on INNER JOIN, LEFT JOIN, and RIGHT JOIN.'
-    }),
-    normalizeItem({
-      title: 'Complete Power BI assignment', category: 'Assignment', subject: 'Power BI', topic: 'DAX',
-      assignment: 'Create 3 measures and test output', dueDate: today, priority: 'Medium', status: 'In Progress', estimateMinutes: 60
-    }),
-    normalizeItem({
-      title: 'English speaking practice', category: 'Task', subject: 'English', topic: 'Intro practice',
-      dueDate: today, priority: 'Low', status: 'Not Started', estimateMinutes: 20
-    })
+    normalizeItem({ title: 'Watch SQL Joins video', category: 'Study', subject: 'SQL', topic: 'Joins', youtubeLink: 'https://www.youtube.com/', assignment: 'Practice 10 join questions', dueDate: today, reminderAt: `${today}T19:00`, priority: 'High', status: 'Not Started', estimateMinutes: 45, notes: 'Focus on INNER, LEFT, RIGHT JOIN.' }),
+    normalizeItem({ title: 'Complete Power BI assignment', category: 'Assignment', subject: 'Power BI', topic: 'DAX', assignment: 'Create 3 measures and test output', dueDate: today, priority: 'Medium', status: 'In Progress', estimateMinutes: 60 }),
+    normalizeItem({ title: 'English speaking practice', category: 'Task', subject: 'English', topic: 'Intro practice', dueDate: today, priority: 'Low', status: 'Not Started', estimateMinutes: 20 })
   ];
   saveState();
 }
 
+/* ---------------- Events ---------------- */
+function handleItemAction(event) {
+  const button = event.target.closest('[data-action]');
+  if (!button) return;
+  const id = button.dataset.id;
+  const action = button.dataset.action;
+  if (action === 'menu') {
+    event.stopPropagation();
+    const menu = button.parentElement.querySelector('.card-menu');
+    const willOpen = menu.hidden;
+    closeAllMenus();
+    menu.hidden = !willOpen;
+    return;
+  }
+  if (action === 'edit') { closeAllMenus(); editItem(id); }
+  if (action === 'delete') { closeAllMenus(); deleteItem(id); }
+  if (action === 'toggle') toggleDone(id);
+  if (action === 'progress') { closeAllMenus(); updateStatus(id, 'In Progress'); }
+  if (action === 'focus') openFocusMode();
+}
+
 function bindEvents() {
   $$('.nav-btn, .mobile-nav-btn').forEach((btn) => btn.addEventListener('click', () => setView(btn.dataset.view)));
-  $$('[data-jump]').forEach((btn) => btn.addEventListener('click', () => setView(btn.dataset.jump)));
 
   $('#themeToggle').addEventListener('click', () => {
     state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
-    saveState();
-    applyTheme();
+    saveState(); applyTheme();
   });
 
-  $('#itemForm').addEventListener('submit', (event) => {
+  // Add dialog
+  $('#addBtn').addEventListener('click', () => openAddDialog());
+  $('#fab').addEventListener('click', () => openAddDialog());
+  $('#closeAddDialog').addEventListener('click', () => $('#addDialog').close());
+  $('#addMoreToggle').addEventListener('click', () => setAdvanced($('#addAdvanced').hidden));
+  $('#addForm').addEventListener('submit', (event) => {
     event.preventDefault();
     try {
-      saveItem(getFormItem());
-      resetMainForm();
-      showToast('Item saved');
-    } catch (error) {
-      showToast(error.message);
-    }
+      const isEdit = Boolean($('#addEditingId').value);
+      saveItem(buildItemFromDialog());
+      $('#addDialog').close();
+      showToast(isEdit ? 'Task updated' : 'Task added');
+    } catch (error) { showToast(error.message); }
   });
 
-  $('#resetForm').addEventListener('click', resetMainForm);
-  $('#cancelEdit').addEventListener('click', resetMainForm);
-
-  $('#studyForm').addEventListener('submit', (event) => {
-    event.preventDefault();
-    try {
-      saveItem(createStudyItemFromForm());
-      $('#studyForm').reset();
-      $('#studyPriority').value = 'Medium';
-      showToast('Study topic added');
-    } catch (error) {
-      showToast(error.message);
-    }
-  });
-
-  $('#quickAddBtn').addEventListener('click', () => {
-    const dialog = $('#quickAddDialog');
-    $('#quickTitle').focus();
-    if (typeof dialog.showModal === 'function') dialog.showModal();
-  });
-
-  $('#closeQuickAdd').addEventListener('click', () => $('#quickAddDialog').close());
-
-  $('#quickAddForm').addEventListener('submit', (event) => {
-    event.preventDefault();
-    try {
-      saveItem(buildQuickItem());
-      $('#quickAddForm').reset();
-      $('#quickPriority').value = 'Medium';
-      $('#quickAddDialog').close();
-      showToast('Quick task added');
-    } catch (error) {
-      showToast(error.message);
-    }
-  });
-
-  $('#focusModeBtn').addEventListener('click', openFocusMode);
+  // Focus
   $('#closeFocus').addEventListener('click', () => $('#focusDialog').close());
 
+  // Cards (delegated)
   document.body.addEventListener('click', handleItemAction);
+  document.addEventListener('click', (e) => { if (!e.target.closest('.card-menu-wrap')) closeAllMenus(); });
 
-  ['searchInput', 'statusFilter', 'categoryFilter', 'dateFilter', 'todaySort'].forEach((id) => {
-    $(`#${id}`).addEventListener('input', renderAll);
-    $(`#${id}`).addEventListener('change', renderAll);
+  // Empty-state action buttons
+  document.body.addEventListener('click', (e) => {
+    const emptyBtn = e.target.closest('[data-empty-action]');
+    if (emptyBtn) {
+      const target = emptyBtn.dataset.emptyAction;
+      if (target === 'add') openAddDialog(); else if (target) setView(target);
+    }
+    if (e.target.closest('[data-overdue-jump]')) { setView('tasks'); $('#whenFilter').value = 'overdue'; renderTasks(); }
   });
 
-  $('#listViewBtn').addEventListener('click', () => {
-    state.settings.boardView = false;
-    saveState();
+  // Tasks chips + filters
+  $('#taskChips').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    activeChip = chip.dataset.chip;
     renderTasks();
   });
-
-  $('#boardViewBtn').addEventListener('click', () => {
-    state.settings.boardView = true;
-    saveState();
+  $('#statusSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('.seg-btn');
+    if (!b) return;
+    activeStatus = b.dataset.status;
     renderTasks();
   });
-
-  $('#dailyDate').addEventListener('change', renderDaily);
-  $('#saveDailyNote').addEventListener('click', () => {
-    const date = $('#dailyDate').value || todayISO();
-    state.dailyNotes[date] = cleanText($('#dailyNote').value, 1500);
-    saveState();
-    showToast('Daily note saved');
+  ['searchInput', 'whenFilter', 'todaySort'].forEach((id) => {
+    const el = $(`#${id}`);
+    if (!el) return;
+    el.addEventListener('input', () => { id === 'todaySort' ? renderToday() : renderTasks(); });
+    el.addEventListener('change', () => { id === 'todaySort' ? renderToday() : renderTasks(); });
   });
 
+  $('#listViewBtn').addEventListener('click', () => { state.settings.boardView = false; saveState(); renderTasks(); });
+  $('#boardViewBtn').addEventListener('click', () => { state.settings.boardView = true; saveState(); renderTasks(); });
+
+  // Reflection note
+  $('#saveReflection')?.addEventListener('click', () => {
+    const date = todayISO();
+    state.dailyNotes[date] = cleanText($('#reflectionNote').value, 1500);
+    saveState();
+    showToast('Note saved');
+  });
+
+  // Excel
   $('#excelFile').addEventListener('change', (event) => handleExcelFile(event.target.files[0]));
   $('#downloadTemplate').addEventListener('click', downloadCSVTemplate);
   $('#clearPreview').addEventListener('click', clearExcelPreview);
@@ -1047,42 +946,50 @@ function bindEvents() {
         return true;
       });
     state.items = [...importRows, ...state.items];
-    saveState();
-    clearExcelPreview();
-    renderAll();
-    showToast('Rows imported successfully');
+    saveState(); clearExcelPreview(); renderAll();
+    showToast(`${importRows.length} row${importRows.length === 1 ? '' : 's'} imported`);
   });
 
   const dropZone = $('#dropZone');
-  ['dragenter', 'dragover'].forEach((type) => dropZone.addEventListener(type, (event) => {
-    event.preventDefault();
-    dropZone.classList.add('dragging');
-  }));
-  ['dragleave', 'drop'].forEach((type) => dropZone.addEventListener(type, (event) => {
-    event.preventDefault();
-    dropZone.classList.remove('dragging');
-  }));
+  ['dragenter', 'dragover'].forEach((type) => dropZone.addEventListener(type, (event) => { event.preventDefault(); dropZone.classList.add('dragging'); }));
+  ['dragleave', 'drop'].forEach((type) => dropZone.addEventListener(type, (event) => { event.preventDefault(); dropZone.classList.remove('dragging'); }));
   dropZone.addEventListener('drop', (event) => handleExcelFile(event.dataTransfer.files[0]));
 
+  // Backup + danger
   $('#exportBackup').addEventListener('click', exportBackup);
   $('#importBackup').addEventListener('change', (event) => importBackup(event.target.files[0]));
   $('#clearCompleted').addEventListener('click', () => {
-    if (!confirm('Clear all completed items?')) return;
-    const deletedIds = state.items.filter((item) => item.status === 'Done').map((item) => item.id);
+    const removed = state.items.filter((item) => item.status === 'Done');
+    if (!removed.length) { showToast('Nothing completed to clear'); return; }
+    const deletedIds = removed.map((item) => item.id);
     state.items = state.items.filter((item) => item.status !== 'Done');
     window.StudyFlowCloudSync?.deleteTasks?.(deletedIds);
-    saveState();
-    renderAll();
-    showToast('Completed items cleared');
+    saveState(); renderAll();
+    showToast(`${removed.length} cleared`, () => {
+      state.items = [...removed, ...state.items];
+      saveState(); renderAll(); showToast('Restored');
+    });
   });
   $('#deleteAll').addEventListener('click', () => {
-    if (!confirm('Delete all tasks, study items, and notes?')) return;
+    if (!confirm('Delete ALL tasks, study items, and notes? This cannot be undone.')) return;
     state = cloneDefault();
     window.StudyFlowCloudSync?.deleteAllCloudTasks?.();
-    saveState();
-    applyTheme();
-    renderAll();
+    saveState(); applyTheme(); renderAll();
     showToast('All data deleted');
+  });
+
+  // Toast undo
+  $('#toastAction').addEventListener('click', () => {
+    const fn = lastUndo; lastUndo = null;
+    $('#toast').classList.remove('show');
+    if (fn) fn();
+  });
+
+  // Keyboard shortcuts (desktop)
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('input, textarea, select')) return;
+    if (e.key === 'n') { e.preventDefault(); openAddDialog(); }
+    if (e.key === '/') { e.preventDefault(); setView('tasks'); $('#searchInput').focus(); }
   });
 
   if (typeof bindSchedulerEvents === 'function') bindSchedulerEvents();
@@ -1090,7 +997,6 @@ function bindEvents() {
 
 function init() {
   applyTheme();
-  $('#dailyDate').value = todayISO();
   bindEvents();
   seedDemoData();
   renderAll();
@@ -1106,30 +1012,20 @@ function registerServiceWorker() {
 
 function replaceState(nextState, options = {}) {
   state = {
-    ...cloneDefault(),
-    ...(nextState || {}),
+    ...cloneDefault(), ...(nextState || {}),
     items: Array.isArray(nextState?.items) ? nextState.items.map(normalizeItem) : [],
     dailyNotes: nextState?.dailyNotes && typeof nextState.dailyNotes === 'object' ? nextState.dailyNotes : {},
     studyPlans: Array.isArray(nextState?.studyPlans) ? nextState.studyPlans : [],
     settings: { ...DEFAULT_STATE.settings, ...(nextState?.settings || {}) }
   };
   saveState({ skipCloud: options.skipCloud });
-  applyTheme();
-  renderAll();
+  applyTheme(); renderAll();
 }
 
 function exposeStudyFlowApp() {
   window.StudyFlowApp = {
-    getState: () => state,
-    replaceState,
-    saveState,
-    renderAll,
-    normalizeItem,
-    todayISO,
-    nowISO,
-    showToast,
-    escapeHTML,
-    getCalendarUrl
+    getState: () => state, replaceState, saveState, renderAll,
+    normalizeItem, todayISO, nowISO, showToast, escapeHTML, getCalendarUrl
   };
   window.dispatchEvent(new CustomEvent('studyflow:app-ready'));
 }
