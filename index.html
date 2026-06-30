@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Free personal task manager and study planner with Excel import and Google Calendar links." />
-  <title>StudyFlow Planner</title>
+  <meta name="description" content="Calm daily study and task planner. Plan your syllabus, see what's next, get it done." />
+  <title>StudyFlow</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#2563eb" />
   <link rel="stylesheet" href="style.css" />
@@ -22,25 +22,20 @@
       <div class="brand-block">
         <div class="brand-mark">SF</div>
         <div>
-          <p class="eyebrow">Personal workspace</p>
+          <p class="eyebrow">Daily planner</p>
           <h1>StudyFlow</h1>
         </div>
       </div>
 
       <nav class="nav-list">
-        <button class="nav-btn active" data-view="dashboard" type="button"><span>◼</span> Dashboard</button>
-        <button class="nav-btn" data-view="tasks" type="button"><span>✓</span> Tasks</button>
-        <button class="nav-btn" data-view="study" type="button"><span>▣</span> Study Planner</button>
-        <button class="nav-btn" data-view="scheduler" type="button"><span>⌁</span> Smart Scheduler</button>
-        <button class="nav-btn" data-view="assignments" type="button"><span>✎</span> Assignments</button>
-        <button class="nav-btn" data-view="videos" type="button"><span>▶</span> Videos</button>
-        <button class="nav-btn" data-view="daily" type="button"><span>◎</span> Daily Tracker</button>
-        <button class="nav-btn" data-view="excel" type="button"><span>⇧</span> Excel Upload</button>
-        <button class="nav-btn" data-view="settings" type="button"><span>⚙</span> Settings</button>
+        <button class="nav-btn active" data-view="dashboard" type="button"><span class="nav-ico">◉</span> Today</button>
+        <button class="nav-btn" data-view="tasks" type="button"><span class="nav-ico">✓</span> Tasks</button>
+        <button class="nav-btn" data-view="scheduler" type="button"><span class="nav-ico">◇</span> Plan</button>
+        <button class="nav-btn" data-view="settings" type="button"><span class="nav-ico">⚙</span> Settings</button>
       </nav>
 
       <div class="sidebar-card">
-        <p class="mini-label">Today progress</p>
+        <p class="mini-label">Today’s progress</p>
         <div class="mini-progress"><span id="sidebarProgressBar"></span></div>
         <strong id="sidebarProgressText">0%</strong>
       </div>
@@ -50,214 +45,102 @@
       <header class="topbar">
         <div>
           <p id="currentDate" class="eyebrow">Today</p>
-          <h2 id="viewTitle">Dashboard</h2>
+          <h2 id="viewTitle">Today</h2>
         </div>
         <div class="topbar-actions">
-          <button id="quickAddBtn" class="primary-btn" type="button">+ Quick add</button>
-          <button id="focusModeBtn" class="soft-btn" type="button">Focus mode</button>
+          <button id="addBtn" class="primary-btn" type="button">+ Add</button>
           <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle dark mode">☾</button>
-          <span id="accountModeBadge" class="account-badge">Local only</span>
+          <span id="accountModeBadge" class="account-badge" title="Account status">Local only</span>
         </div>
       </header>
 
       <main class="content">
+        <!-- ===================== TODAY ===================== -->
         <section id="dashboard" class="view active-view">
-          <div class="hero-card">
-            <div>
-              <p class="eyebrow">Today first</p>
-              <h3 id="todayHeadline">Plan your day with clarity</h3>
-              <p id="todaySubtext" class="muted">Your pending work, study topics, videos, and assignments will appear here.</p>
-            </div>
-            <div class="hero-actions">
-              <button class="primary-btn" data-jump="tasks" type="button">Add task</button>
-              <button class="soft-btn" data-jump="study" type="button">Add study topic</button>
+          <div class="today-hero">
+            <p class="eyebrow">Today first</p>
+            <h3 id="greetingText">Plan your day with clarity</h3>
+            <div class="today-progress">
+              <div class="today-progress-bar"><span id="todayProgressBar"></span></div>
+              <strong id="todayProgressText">0%</strong>
             </div>
           </div>
 
-          <div class="stats-grid">
-            <article class="stat-card accent-blue"><span id="todayCount">0</span><p>Due today</p></article>
-            <article class="stat-card accent-orange"><span id="overdueCount">0</span><p>Overdue</p></article>
-            <article class="stat-card accent-purple"><span id="pendingCount">0</span><p>Pending</p></article>
-            <article class="stat-card accent-green"><span id="completedTodayCount">0</span><p>Completed today</p></article>
-          </div>
+          <section class="next-up-block" id="nextUpBlock">
+            <div class="block-label"><span>Next up</span></div>
+            <div id="nextUpWrap"></div>
+          </section>
 
-          <div class="dashboard-grid">
-            <section class="panel large-panel">
-              <div class="panel-head">
-                <div>
-                  <p class="eyebrow">Priority order</p>
-                  <h3>Today’s focus list</h3>
-                </div>
-                <select id="todaySort" aria-label="Sort today's list">
-                  <option value="smart">Smart sort</option>
-                  <option value="priority">Priority</option>
-                  <option value="time">Reminder time</option>
-                </select>
-              </div>
-              <div id="todayList" class="card-list"></div>
-            </section>
+          <div id="overdueNudge" class="overdue-nudge" hidden></div>
 
-            <aside class="side-stack">
-              <section class="panel">
-                <div class="panel-head small-head">
-                  <h3>Study progress</h3>
-                  <span id="studyProgressText" class="pill">0%</span>
-                </div>
-                <div class="progress-ring-wrap">
-                  <div class="progress-ring" id="studyProgressRing" data-value="0%"></div>
-                  <p class="muted">Completed study items out of total study items.</p>
-                </div>
-              </section>
+          <section class="today-list-block">
+            <div class="block-label spread">
+              <span>Today</span>
+              <select id="todaySort" aria-label="Sort today's list">
+                <option value="smart">Smart order</option>
+                <option value="priority">Priority</option>
+                <option value="time">Reminder time</option>
+              </select>
+            </div>
+            <div id="todayListWrap" class="card-list"></div>
+          </section>
 
-              <section class="panel">
-                <div class="panel-head small-head">
-                  <h3>Next videos</h3>
-                  <button class="link-btn" data-jump="videos" type="button">View all</button>
-                </div>
-                <div id="nextVideos" class="compact-list"></div>
-              </section>
-
-              <section class="panel">
-                <div class="panel-head small-head">
-                  <h3>Upcoming assignments</h3>
-                  <button class="link-btn" data-jump="assignments" type="button">View all</button>
-                </div>
-                <div id="upcomingAssignments" class="compact-list"></div>
-              </section>
-
-              <section class="panel sync-mini-panel">
-                <div class="panel-head small-head">
-                  <h3>Sync status</h3>
-                  <button class="link-btn" data-jump="settings" type="button">Manage</button>
-                </div>
-                <div id="dashboardSyncStatus" class="sync-status-card">
-                  <strong>Local mode</strong>
-                  <p class="muted">Sign in from Settings to sync laptop and phone.</p>
-                </div>
-              </section>
-            </aside>
-          </div>
+          <details class="reflection" id="reflectionWrap">
+            <summary>Reflection note for today</summary>
+            <textarea id="reflectionNote" rows="4" placeholder="What did you study today? What is pending for tomorrow?"></textarea>
+            <div class="form-actions"><button id="saveReflection" class="soft-btn" type="button">Save note</button></div>
+          </details>
         </section>
 
+        <!-- ===================== TASKS ===================== -->
         <section id="tasks" class="view">
-          <div class="page-grid">
-            <section class="panel form-panel">
-              <div class="panel-head">
-                <div>
-                  <p class="eyebrow">Create or edit</p>
-                  <h3 id="formTitle">Task details</h3>
-                </div>
-                <button id="cancelEdit" class="soft-btn" type="button" hidden>Cancel edit</button>
+          <section class="panel list-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Everything in one place</p>
+                <h3>Tasks</h3>
               </div>
+              <span id="resultCount" class="pill">0 items</span>
+            </div>
 
-              <form id="itemForm" class="form-grid">
-                <input type="hidden" id="editingId" />
-                <label class="full-width">Title *<input id="title" required maxlength="120" placeholder="Example: Watch SQL joins video" /></label>
-                <label>Category
-                  <select id="category">
-                    <option>Task</option>
-                    <option>Study</option>
-                    <option>Assignment</option>
-                  </select>
-                </label>
-                <label>Priority
-                  <select id="priority">
-                    <option>High</option>
-                    <option selected>Medium</option>
-                    <option>Low</option>
-                  </select>
-                </label>
-                <label>Subject<input id="subject" maxlength="80" placeholder="SQL, Power BI, English" /></label>
-                <label>Topic<input id="topic" maxlength="120" placeholder="Joins, DAX, Grammar" /></label>
-                <label class="full-width">YouTube video link<input id="youtubeLink" type="url" placeholder="https://youtube.com/..." /></label>
-                <label class="full-width">Assignment<input id="assignment" maxlength="180" placeholder="Complete worksheet / project task" /></label>
-                <label>Due date<input id="dueDate" type="date" /></label>
-                <label>Reminder date & time<input id="reminderAt" type="datetime-local" /></label>
-                <label>Status
-                  <select id="status">
-                    <option>Not Started</option>
-                    <option>In Progress</option>
-                    <option>Done</option>
-                  </select>
-                </label>
-                <label>Estimated minutes<input id="estimateMinutes" type="number" min="0" max="600" placeholder="30" /></label>
-                <label class="full-width">Notes<textarea id="notes" rows="4" maxlength="700" placeholder="Any extra detail"></textarea></label>
-                <div class="form-actions full-width">
-                  <button class="primary-btn" type="submit">Save item</button>
-                  <button id="resetForm" class="soft-btn" type="button">Reset</button>
-                </div>
-              </form>
-            </section>
+            <div class="chip-row" id="taskChips" role="tablist" aria-label="Filter by type">
+              <button class="chip active" data-chip="all" type="button">All</button>
+              <button class="chip" data-chip="Study" type="button">Study</button>
+              <button class="chip" data-chip="Assignment" type="button">Assignments</button>
+              <button class="chip" data-chip="Video" type="button">Videos</button>
+            </div>
 
-            <section class="panel list-panel">
-              <div class="panel-head">
-                <div>
-                  <p class="eyebrow">Manage work</p>
-                  <h3>All items</h3>
-                </div>
-                <span id="resultCount" class="pill">0 items</span>
+            <div class="filters slim">
+              <input id="searchInput" placeholder="Search tasks…" />
+              <div class="seg" id="statusSeg" role="group" aria-label="Status">
+                <button class="seg-btn active" data-status="active" type="button">Active</button>
+                <button class="seg-btn" data-status="all" type="button">All</button>
+                <button class="seg-btn" data-status="Done" type="button">Done</button>
               </div>
+              <select id="whenFilter" aria-label="Filter by date">
+                <option value="all">Any time</option>
+                <option value="today">Today</option>
+                <option value="week">Next 7 days</option>
+                <option value="overdue">Overdue</option>
+                <option value="noDate">No date</option>
+              </select>
+              <button id="boardViewBtn" class="icon-btn ghost" type="button" title="Board view" aria-label="Board view">▤</button>
+              <button id="listViewBtn" class="icon-btn ghost active" type="button" title="List view" aria-label="List view">☰</button>
+            </div>
 
-              <div class="filters">
-                <input id="searchInput" placeholder="Search title, subject, topic..." />
-                <select id="statusFilter">
-                  <option value="all">All status</option>
-                  <option>Not Started</option>
-                  <option>In Progress</option>
-                  <option>Done</option>
-                </select>
-                <select id="categoryFilter">
-                  <option value="all">All category</option>
-                  <option>Task</option>
-                  <option>Study</option>
-                  <option>Assignment</option>
-                </select>
-                <select id="dateFilter">
-                  <option value="all">All dates</option>
-                  <option value="today">Today</option>
-                  <option value="week">Next 7 days</option>
-                  <option value="overdue">Overdue</option>
-                  <option value="noDate">No date</option>
-                </select>
-              </div>
-
-              <div class="kanban-toggle">
-                <button id="listViewBtn" class="tab-btn active" type="button">List</button>
-                <button id="boardViewBtn" class="tab-btn" type="button">Board</button>
-              </div>
-
-              <div id="allItems" class="card-list"></div>
-              <div id="boardItems" class="board-grid" hidden></div>
-            </section>
-          </div>
+            <div id="allItems" class="card-list"></div>
+            <div id="boardItems" class="board-grid" hidden></div>
+          </section>
         </section>
 
-        <section id="study" class="view">
-          <div class="page-grid narrow-left">
-            <section class="panel form-panel">
-              <div class="panel-head"><div><p class="eyebrow">Topic wise</p><h3>Add study topic</h3></div></div>
-              <form id="studyForm" class="form-grid">
-                <label>Subject *<input id="studySubject" required maxlength="80" placeholder="Example: SQL" /></label>
-                <label>Topic *<input id="studyTopic" required maxlength="120" placeholder="Example: Group By" /></label>
-                <label class="full-width">YouTube link<input id="studyVideo" type="url" placeholder="https://youtube.com/..." /></label>
-                <label class="full-width">Assignment<input id="studyAssignment" maxlength="180" placeholder="Practice 10 questions" /></label>
-                <label>Due date<input id="studyDueDate" type="date" /></label>
-                <label>Reminder date & time<input id="studyReminderAt" type="datetime-local" /></label>
-                <label>Priority<select id="studyPriority"><option>High</option><option selected>Medium</option><option>Low</option></select></label>
-                <label>Estimated minutes<input id="studyEstimateMinutes" type="number" min="0" max="600" placeholder="45" /></label>
-                <label class="full-width">Notes<textarea id="studyNotes" rows="3"></textarea></label>
-                <div class="form-actions full-width"><button class="primary-btn" type="submit">Add topic</button></div>
-              </form>
-            </section>
-            <section class="panel list-panel">
-              <div class="panel-head"><div><p class="eyebrow">Learning plan</p><h3>Study items</h3></div><span id="studyCount" class="pill">0</span></div>
-              <div id="studyList" class="card-list"></div>
-            </section>
-          </div>
-        </section>
-
-
+        <!-- ===================== PLAN (Smart Scheduler — preserved) ===================== -->
         <section id="scheduler" class="view">
+          <div class="plan-intro-card">
+            <p class="eyebrow">Your StudyFlow superpower</p>
+            <h3>Turn a syllabus into a day-by-day plan</h3>
+            <p class="muted">Paste your topics, set how much time you have, and StudyFlow builds a realistic schedule — then those study sessions show up in Today automatically.</p>
+          </div>
+
           <div class="scheduler-grid">
             <section class="panel scheduler-form-panel">
               <div class="panel-head">
@@ -265,10 +148,8 @@
                   <p class="eyebrow">Syllabus to schedule</p>
                   <h3>Smart Study Scheduler</h3>
                 </div>
-                <span class="pill">Free rule-based v1</span>
+                <span class="pill">Free rule-based</span>
               </div>
-
-              <p class="muted scheduler-intro">Paste your syllabus, set your available time, and generate a practical day-wise plan. This version uses free JavaScript logic, not a paid AI API.</p>
 
               <form id="schedulerForm" class="form-grid">
                 <label class="full-width">Course / subject name *
@@ -315,13 +196,13 @@
                 </div>
 
                 <label class="full-width">Syllabus topics *
-                  <textarea id="schedulerTopics" rows="9" placeholder="One topic per line. Optional format:\nTopic | Difficulty | Priority | Minutes | YouTube link | Assignment\n\nExample:\nSQL Joins | Hard | High | 90 | https://youtube.com/ | Practice 10 join questions\nGroup By | Medium | High | 60 | | Solve 15 questions\nExcel Pivot Table | Easy | Medium | 45"></textarea>
+                  <textarea id="schedulerTopics" rows="9" placeholder="One topic per line. Optional format:&#10;Topic | Difficulty | Priority | Minutes | YouTube link | Assignment&#10;&#10;Example:&#10;SQL Joins | Hard | High | 90 | https://youtube.com/ | Practice 10 join questions&#10;Group By | Medium | High | 60 | | Solve 15 questions"></textarea>
                 </label>
 
                 <div class="topic-format full-width">
                   <strong>Accepted format</strong>
                   <p><code>Topic | Difficulty | Priority | Minutes | YouTube link | Assignment</code></p>
-                  <p class="muted">Difficulty: Easy, Medium, Hard. Priority: Low, Medium, High. If you skip details, the app will use safe defaults.</p>
+                  <p class="muted">Skip any detail and StudyFlow uses safe defaults.</p>
                 </div>
 
                 <div class="form-actions full-width">
@@ -361,77 +242,19 @@
             <section class="panel">
               <div class="panel-head">
                 <div><p class="eyebrow">Catch up</p><h3>Missed scheduler tasks</h3></div>
-                <button id="rescheduleAllMissed" class="soft-btn" type="button">Move missed to next available day</button>
+                <button id="rescheduleAllMissed" class="soft-btn" type="button">Move missed to next day</button>
               </div>
               <div id="missedScheduleList" class="card-list"></div>
             </section>
           </div>
         </section>
 
-
-        <section id="assignments" class="view">
-          <section class="panel">
-            <div class="panel-head">
-              <div><p class="eyebrow">Pending work</p><h3>Assignment Tracker</h3></div>
-              <button class="primary-btn" data-jump="tasks" type="button">Add assignment</button>
-            </div>
-            <div id="assignmentList" class="card-list"></div>
-          </section>
-        </section>
-
-        <section id="videos" class="view">
-          <section class="panel">
-            <div class="panel-head"><div><p class="eyebrow">Learning links</p><h3>Video Library</h3></div></div>
-            <div id="videoList" class="video-grid"></div>
-          </section>
-        </section>
-
-        <section id="daily" class="view">
-          <div class="daily-layout">
-            <section class="panel">
-              <div class="panel-head"><div><p class="eyebrow">Daily habit</p><h3>Daily Tracker</h3></div></div>
-              <div class="daily-hero">
-                <label>Pick date<input id="dailyDate" type="date" /></label>
-                <div class="daily-score">
-                  <strong id="dailyScore">0%</strong>
-                  <span>completion for selected date</span>
-                </div>
-              </div>
-              <div id="dailyChecklist" class="card-list"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-head"><div><p class="eyebrow">Reflection</p><h3>Daily notes</h3></div></div>
-              <textarea id="dailyNote" rows="9" placeholder="What did you study today? What is pending? What should be done tomorrow?"></textarea>
-              <div class="form-actions"><button id="saveDailyNote" class="primary-btn" type="button">Save note</button></div>
-            </section>
-          </div>
-        </section>
-
-        <section id="excel" class="view">
-          <section class="panel">
-            <div class="panel-head">
-              <div><p class="eyebrow">Bulk import</p><h3>Excel Upload</h3></div>
-              <button id="downloadTemplate" class="soft-btn" type="button">Download template</button>
-            </div>
-            <div class="upload-box" id="dropZone">
-              <input id="excelFile" type="file" accept=".xlsx,.xls,.csv" />
-              <strong>Upload your predefined Excel file</strong>
-              <p class="muted">Supported: .xlsx, .xls, .csv. Required column: Task Title. Other columns are optional.</p>
-            </div>
-            <div id="importSummary" class="import-summary" hidden></div>
-            <div id="excelPreview" class="preview-table-wrap"></div>
-            <div class="form-actions">
-              <button id="importRows" class="primary-btn" type="button" disabled>Import preview rows</button>
-              <button id="clearPreview" class="soft-btn" type="button" disabled>Clear preview</button>
-            </div>
-          </section>
-        </section>
-
+        <!-- ===================== SETTINGS ===================== -->
         <section id="settings" class="view">
           <div class="settings-grid">
             <section class="panel account-panel">
               <div class="panel-head">
-                <div><p class="eyebrow">Account</p><h3>Google sign-in and cloud sync</h3></div>
+                <div><p class="eyebrow">Account</p><h3>Sign in &amp; cloud sync</h3></div>
                 <span id="authStatusText" class="pill">Local mode</span>
               </div>
               <div class="account-profile">
@@ -441,11 +264,11 @@
                   <p id="authUserEmail" class="muted">Using this browser only</p>
                 </div>
               </div>
-              <p class="muted">Without login, the app keeps using LocalStorage. After login, you can merge this device data with your Firebase account and use it from laptop or phone.</p>
+              <p class="muted">Without login, StudyFlow saves to this browser only. Sign in to use the same data on laptop and phone.</p>
               <div class="button-row">
                 <button id="signInGoogleBtn" class="primary-btn" type="button">Sign in with Google</button>
                 <button id="signOutGoogleBtn" class="soft-btn" type="button" hidden>Sign out</button>
-                <button id="uploadLocalToCloudBtn" class="soft-btn" type="button" hidden>Upload local data to cloud</button>
+                <button id="uploadLocalToCloudBtn" class="soft-btn" type="button" hidden>Upload local data</button>
                 <button id="syncNowBtn" class="soft-btn" type="button" hidden>Sync now</button>
               </div>
               <div class="sync-details">
@@ -456,43 +279,57 @@
               </div>
             </section>
 
-            <section class="panel calendar-panel">
-              <div class="panel-head">
-                <div><p class="eyebrow">Calendar automation</p><h3>Google Calendar connection</h3></div>
-                <span id="calendarStatusText" class="pill">Not connected</span>
+            <details class="panel collapse-panel">
+              <summary><div><p class="eyebrow">Bulk import</p><h3>Import from Excel</h3></div><span class="pill">Optional</span></summary>
+              <div class="collapse-body">
+                <div class="upload-box" id="dropZone">
+                  <input id="excelFile" type="file" accept=".xlsx,.xls,.csv" />
+                  <strong>Upload a spreadsheet</strong>
+                  <p class="muted">.xlsx, .xls, or .csv. Only “Task Title” is required.</p>
+                </div>
+                <div class="button-row">
+                  <button id="downloadTemplate" class="soft-btn" type="button">Download template</button>
+                </div>
+                <div id="importSummary" class="import-summary" hidden></div>
+                <div id="excelPreview" class="preview-table-wrap"></div>
+                <div class="form-actions">
+                  <button id="importRows" class="primary-btn" type="button" disabled>Import preview rows</button>
+                  <button id="clearPreview" class="soft-btn" type="button" disabled>Clear preview</button>
+                </div>
               </div>
-              <p class="muted">Firebase login and Calendar permission are separate. Connect Calendar only when you want automatic event creation. The manual Google Calendar link still stays as fallback.</p>
-              <div class="button-row">
-                <button id="connectCalendarBtn" class="primary-btn" type="button">Connect Google Calendar</button>
-                <button id="syncTodayCalendarBtn" class="soft-btn" type="button">Create today events</button>
-                <button id="syncPendingCalendarBtn" class="soft-btn" type="button">Sync pending events</button>
+            </details>
+
+            <details class="panel collapse-panel">
+              <summary><div><p class="eyebrow">Calendar automation</p><h3>Google Calendar</h3></div><span id="calendarStatusText" class="pill">Not connected</span></summary>
+              <div class="collapse-body">
+                <p class="muted">Connect only if you want study sessions pushed to Google Calendar automatically. Every task already has a one-tap “Add to Calendar” link without this.</p>
+                <div class="button-row">
+                  <button id="connectCalendarBtn" class="primary-btn" type="button">Connect Google Calendar</button>
+                  <button id="syncTodayCalendarBtn" class="soft-btn" type="button">Create today’s events</button>
+                  <button id="syncPendingCalendarBtn" class="soft-btn" type="button">Sync pending events</button>
+                </div>
+                <p id="calendarMessage" class="muted"></p>
               </div>
-              <p id="calendarMessage" class="muted"></p>
-            </section>
+            </details>
+
             <section class="panel">
-              <div class="panel-head"><div><p class="eyebrow">Data safety</p><h3>Backup and restore</h3></div></div>
-              <p class="muted">LocalStorage saves data only in this browser. Export backup before changing device or clearing browser data.</p>
+              <div class="panel-head"><div><p class="eyebrow">Data safety</p><h3>Backup &amp; restore</h3></div></div>
+              <p class="muted">Export a backup before switching devices or clearing your browser.</p>
               <div class="button-row">
                 <button id="exportBackup" class="primary-btn" type="button">Export JSON backup</button>
                 <label class="file-action">Import JSON backup<input id="importBackup" type="file" accept="application/json" hidden /></label>
               </div>
             </section>
-            <section class="panel danger-zone">
-              <div class="panel-head"><div><p class="eyebrow">Cleanup</p><h3>Manage data</h3></div></div>
-              <div class="button-row">
-                <button id="clearCompleted" class="soft-btn" type="button">Clear completed</button>
-                <button id="deleteAll" class="danger-btn" type="button">Delete all data</button>
+
+            <details class="panel collapse-panel danger-zone">
+              <summary><div><p class="eyebrow">Cleanup</p><h3>Manage data</h3></div><span class="pill">Careful</span></summary>
+              <div class="collapse-body">
+                <div class="button-row">
+                  <button id="clearCompleted" class="soft-btn" type="button">Clear completed</button>
+                  <button id="deleteAll" class="danger-btn" type="button">Delete all data</button>
+                </div>
               </div>
-            </section>
-            <section class="panel">
-              <div class="panel-head"><div><p class="eyebrow">About</p><h3>Free setup</h3></div></div>
-              <ul class="info-list">
-                <li>Works with HTML, CSS, and JavaScript.</li>
-                <li>Can run by opening index.html.</li>
-                <li>Can be hosted free on GitHub Pages or Netlify.</li>
-                <li>Google Calendar works through a free prefilled event link.</li>
-              </ul>
-            </section>
+            </details>
           </div>
         </section>
       </main>
@@ -500,40 +337,68 @@
   </div>
 
   <nav class="mobile-nav" aria-label="Mobile navigation">
-    <button class="mobile-nav-btn active" data-view="dashboard" type="button">Home</button>
-    <button class="mobile-nav-btn" data-view="tasks" type="button">Tasks</button>
-    <button class="mobile-nav-btn" data-view="study" type="button">Study</button>
-    <button class="mobile-nav-btn" data-view="scheduler" type="button">Plan</button>
-    <button class="mobile-nav-btn" data-view="daily" type="button">Daily</button>
+    <button class="mobile-nav-btn active" data-view="dashboard" type="button"><span>◉</span>Today</button>
+    <button class="mobile-nav-btn" data-view="tasks" type="button"><span>✓</span>Tasks</button>
+    <button class="mobile-nav-btn" data-view="scheduler" type="button"><span>◇</span>Plan</button>
+    <button class="mobile-nav-btn" data-view="settings" type="button"><span>⚙</span>Settings</button>
   </nav>
 
-  <dialog id="quickAddDialog" class="modal">
-    <form method="dialog" class="modal-card" id="quickAddForm">
+  <button id="fab" class="fab" type="button" aria-label="Add task">+</button>
+
+  <!-- ===================== UNIFIED ADD / EDIT DIALOG ===================== -->
+  <dialog id="addDialog" class="modal">
+    <form class="modal-card" id="addForm">
       <div class="panel-head">
-        <div><p class="eyebrow">Fast capture</p><h3>Quick add task</h3></div>
-        <button class="icon-btn" value="close" type="button" id="closeQuickAdd">×</button>
+        <div><p class="eyebrow">Capture</p><h3 id="addDialogTitle">Add task</h3></div>
+        <button class="icon-btn" type="button" id="closeAddDialog" aria-label="Close">×</button>
       </div>
-      <label>Task title *<input id="quickTitle" required maxlength="120" placeholder="What do you need to do?" /></label>
+      <input type="hidden" id="addEditingId" />
+      <label class="full-width">What do you need to do? *
+        <input id="addTitle" required maxlength="120" placeholder="e.g. Practice SQL joins" />
+      </label>
       <div class="form-grid two-only">
-        <label>Category<select id="quickCategory"><option>Task</option><option>Study</option><option>Assignment</option></select></label>
-        <label>Due date<input id="quickDueDate" type="date" /></label>
-        <label>Priority<select id="quickPriority"><option>High</option><option selected>Medium</option><option>Low</option></select></label>
-        <label>Reminder<input id="quickReminderAt" type="datetime-local" /></label>
+        <label>Type
+          <select id="addCategory"><option>Task</option><option>Study</option><option>Assignment</option></select>
+        </label>
+        <label>Priority
+          <select id="addPriority"><option>High</option><option selected>Medium</option><option>Low</option></select>
+        </label>
+        <label>Due date<input id="addDueDate" type="date" /></label>
+        <label>Reminder<input id="addReminderAt" type="datetime-local" /></label>
       </div>
-      <div class="form-actions"><button class="primary-btn" type="submit">Add now</button></div>
+
+      <button type="button" class="more-toggle" id="addMoreToggle" aria-expanded="false">More details ▾</button>
+      <div class="advanced-fields" id="addAdvanced" hidden>
+        <div class="form-grid">
+          <label>Subject<input id="addSubject" maxlength="80" placeholder="SQL, Power BI, English" /></label>
+          <label>Topic<input id="addTopic" maxlength="120" placeholder="Joins, DAX, Grammar" /></label>
+          <label class="full-width">YouTube link<input id="addYoutube" type="url" placeholder="https://youtube.com/…" /></label>
+          <label class="full-width">Assignment<input id="addAssignment" maxlength="180" placeholder="Complete worksheet / project task" /></label>
+          <label>Estimated minutes<input id="addEstimate" type="number" min="0" max="600" placeholder="45" /></label>
+          <label>Status
+            <select id="addStatus"><option>Not Started</option><option>In Progress</option><option>Done</option></select>
+          </label>
+          <label class="full-width">Notes<textarea id="addNotes" rows="3" maxlength="700" placeholder="Any extra detail"></textarea></label>
+        </div>
+      </div>
+
+      <div class="form-actions"><button class="primary-btn" type="submit">Save</button></div>
     </form>
   </dialog>
 
   <dialog id="focusDialog" class="modal">
     <div class="modal-card">
       <div class="panel-head">
-        <div><p class="eyebrow">One thing now</p><h3>Focus mode</h3></div>
-        <button class="icon-btn" type="button" id="closeFocus">×</button>
+        <div><p class="eyebrow">One thing now</p><h3>Focus</h3></div>
+        <button class="icon-btn" type="button" id="closeFocus" aria-label="Close">×</button>
       </div>
       <div id="focusContent"></div>
     </div>
   </dialog>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite">
+    <span id="toastText"></span>
+    <button id="toastAction" class="toast-action" type="button" hidden></button>
+  </div>
 </body>
 </html>
