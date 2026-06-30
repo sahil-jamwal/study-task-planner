@@ -267,6 +267,74 @@ function showToast(message, undoFn) {
   showToast.timer = setTimeout(() => { toast.classList.remove('show'); lastUndo = null; }, undoFn ? 5000 : 2300);
 }
 
+/* ---------------- Reminders (browser notifications + in-app) ---------------- */
+let firedReminders = loadFiredReminders();
+
+function loadFiredReminders() {
+  try {
+    const raw = localStorage.getItem('studyflow.firedReminders');
+    const obj = raw ? JSON.parse(raw) : {};
+    return new Set(Object.keys(obj));
+  } catch { return new Set(); }
+}
+
+function saveFiredReminders() {
+  try {
+    const today = todayISO();
+    const obj = {};
+    firedReminders.forEach((key) => {
+      const when = key.split('|')[1] || '';
+      if (when.slice(0, 10) === today) obj[key] = 1; // keep only today's, so it never grows large
+    });
+    firedReminders = new Set(Object.keys(obj));
+    localStorage.setItem('studyflow.firedReminders', JSON.stringify(obj));
+  } catch { /* ignore */ }
+}
+
+function requestReminderPermission() {
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  } catch { /* ignore */ }
+}
+
+function notifyUser(title, body) {
+  showToast(title);
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      const note = new Notification(title, { body: body || '' });
+      note.onclick = () => { try { window.focus(); } catch {} note.close(); };
+    }
+  } catch { /* ignore */ }
+}
+
+// Fires any reminders whose time has arrived today and that haven't already fired.
+// Note: this works while StudyFlow is open in the browser (it is not a background push service).
+function checkReminders() {
+  const now = Date.now();
+  const today = todayISO();
+  let changed = false;
+  state.items.forEach((item) => {
+    if (item.status === 'Done' || !item.reminderAt) return;
+    if (getDatePart(item.reminderAt) !== today) return; // only today's, no old spam
+    const time = new Date(item.reminderAt).getTime();
+    if (Number.isNaN(time) || time > now) return;
+    const key = `${item.id}|${item.reminderAt}`;
+    if (firedReminders.has(key)) return;
+    firedReminders.add(key);
+    changed = true;
+    const detail = [item.subject, item.topic].filter(Boolean).join(' • ') || 'Open StudyFlow to continue.';
+    notifyUser(`Reminder: ${item.title}`, detail);
+  });
+  if (changed) saveFiredReminders();
+}
+
+function startReminderEngine() {
+  checkReminders();
+  setInterval(checkReminders, 30000); // check every 30 seconds while the app is open
+}
+
 /* ---------------- Navigation ---------------- */
 const VIEW_TITLES = { dashboard: 'Today', tasks: 'Tasks', scheduler: 'Plan', settings: 'Settings' };
 const VIEW_REDIRECT = { study: 'tasks', assignments: 'tasks', videos: 'tasks', daily: 'dashboard', excel: 'settings' };
@@ -491,11 +559,20 @@ function sortTodayItems(items) {
   return copy.sort(sortSmart);
 }
 
+function getTodayFocusItems() {
+  const today = todayISO();
+  return state.items.filter((item) =>
+    isDueToday(item) || isOverdue(item) || (item.status === 'Done' && getDatePart(item.completedAt) === today)
+  );
+}
+
+// Returns 0-100, or -1 to mean "nothing scheduled for today" (so the UI can show a friendly note
+// instead of a discouraging 0%).
 function calculateTodayProgress() {
-  const todayItems = state.items.filter((item) => isDueToday(item) || isOverdue(item));
-  if (!todayItems.length) return 0;
-  const done = todayItems.filter((item) => item.status === 'Done').length;
-  return Math.round((done / todayItems.length) * 100);
+  const items = getTodayFocusItems();
+  if (!items.length) return -1;
+  const done = items.filter((item) => item.status === 'Done').length;
+  return Math.round((done / items.length) * 100);
 }
 
 /* ---------------- Render: Today ---------------- */
@@ -511,15 +588,17 @@ function renderToday() {
   const pendingToday = todayItems.filter(isPending);
   const overdue = state.items.filter(isOverdue);
   const progress = calculateTodayProgress();
+  const hasToday = progress >= 0;
+  const shownPercent = hasToday ? progress : 0;
 
   const remaining = pendingToday.length;
   $('#greetingText').textContent = remaining
     ? `${greeting()}. ${remaining} thing${remaining > 1 ? 's' : ''} left today.`
     : `${greeting()}. You're all clear for today.`;
-  $('#todayProgressBar').style.width = `${progress}%`;
-  $('#todayProgressText').textContent = `${progress}%`;
-  $('#sidebarProgressBar').style.width = `${progress}%`;
-  $('#sidebarProgressText').textContent = `${progress}%`;
+  $('#todayProgressBar').style.width = `${shownPercent}%`;
+  $('#todayProgressText').textContent = hasToday ? `${progress}%` : 'No tasks due';
+  $('#sidebarProgressBar').style.width = `${shownPercent}%`;
+  $('#sidebarProgressText').textContent = hasToday ? `${progress}%` : '—';
 
   // Next up = first pending item (today/overdue first, else any pending)
   const nextUp = pendingToday[0] || state.items.filter(isPending).sort(sortSmart)[0];
@@ -687,26 +766,108 @@ function closeAllMenus(except) {
   $$('.card-menu').forEach((menu) => { if (menu !== except) menu.hidden = true; });
 }
 
-/* ---------------- Focus mode ---------------- */
-function openFocusMode() {
-  const item = state.items.filter(isPending).sort(sortSmart)[0];
-  const dialog = $('#focusDialog');
-  if (!item) {
-    $('#focusContent').innerHTML = emptyState('Nothing pending', 'You have no pending tasks right now.', null);
+/* ---------------- Focus mode with timer ---------------- */
+let focusState = { id: null, intervalId: null, remaining: 0, elapsed: 0, running: false, mode: 'up' };
+
+function formatClock(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+function stopFocusTimer() {
+  if (focusState.intervalId) clearInterval(focusState.intervalId);
+  focusState.intervalId = null;
+  focusState.running = false;
+}
+
+function focusClockValue() {
+  return focusState.mode === 'down' ? focusState.remaining : focusState.elapsed;
+}
+
+function tickFocus() {
+  if (!focusState.running) return;
+  if (focusState.mode === 'down') {
+    focusState.remaining -= 1;
+    if (focusState.remaining <= 0) {
+      focusState.remaining = 0;
+      focusState.running = false;
+      const clockEl = $('#focusClock');
+      if (clockEl) clockEl.textContent = "Time's up";
+      notifyUser('Focus session complete', 'Nice work — your planned time is up.');
+      const toggleBtn = $('#focusToggleBtn');
+      if (toggleBtn) toggleBtn.hidden = true;
+      return;
+    }
   } else {
-    $('#focusContent').innerHTML = `
-      <div class="focus-card">
-        <span class="tag tag-${item.priority.toLowerCase()}">${escapeHTML(item.priority)}</span>
-        <h4>${escapeHTML(item.title)}</h4>
-        <p class="muted">${escapeHTML([item.subject, item.topic, item.dueDate ? `Due ${formatDate(item.dueDate)}` : ''].filter(Boolean).join(' • '))}</p>
-        ${item.assignment ? `<p class="item-assignment">${escapeHTML(item.assignment)}</p>` : ''}
-        <div class="form-actions" style="justify-content:center;margin-top:14px;">
-          <button class="primary-btn" data-action="toggle" data-id="${escapeHTML(item.id)}" type="button">Mark done</button>
-          <button class="soft-btn" data-action="progress" data-id="${escapeHTML(item.id)}" type="button">Start</button>
-        </div>
-      </div>`;
+    focusState.elapsed += 1;
   }
+  const clockEl = $('#focusClock');
+  if (clockEl) clockEl.textContent = formatClock(focusClockValue());
+}
+
+function renderFocus(item) {
+  const minutes = Number(item.estimateMinutes) || 0;
+  $('#focusContent').innerHTML = `
+    <div class="focus-card">
+      <span class="tag tag-${item.priority.toLowerCase()}">${escapeHTML(item.priority)}</span>
+      <h4>${escapeHTML(item.title)}</h4>
+      <p class="muted">${escapeHTML([item.subject, item.topic, minutes ? `Planned ${minutes} min` : ''].filter(Boolean).join(' • '))}</p>
+      ${item.assignment ? `<p class="item-assignment">${escapeHTML(item.assignment)}</p>` : ''}
+      <div class="focus-clock" id="focusClock">${formatClock(focusClockValue())}</div>
+      <div class="form-actions" style="justify-content:center;margin-top:10px;">
+        <button class="soft-btn" id="focusToggleBtn" data-action="focus-toggle" type="button">Pause</button>
+        <button class="primary-btn" data-action="focus-done" type="button">Done</button>
+      </div>
+    </div>`;
+}
+
+function openFocus(itemId) {
+  const dialog = $('#focusDialog');
+  const item = itemId
+    ? state.items.find((entry) => entry.id === itemId)
+    : state.items.filter(isPending).sort(sortSmart)[0];
+
+  if (!item) {
+    stopFocusTimer();
+    $('#focusContent').innerHTML = emptyState('Nothing pending', 'You have no pending tasks right now.', null);
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    return;
+  }
+
+  // Starting focus means the task is now in progress.
+  if (item.status !== 'Done') {
+    item.status = 'In Progress';
+    item.updatedAt = nowISO();
+    item.syncStatus = window.StudyFlowCloudSync?.getUser?.() ? 'pending' : item.syncStatus;
+    saveState();
+    renderToday();
+    renderTasks();
+  }
+
+  stopFocusTimer();
+  const minutes = Number(item.estimateMinutes) || 0;
+  focusState = { id: item.id, intervalId: null, remaining: minutes * 60, elapsed: 0, running: true, mode: minutes > 0 ? 'down' : 'up' };
+  renderFocus(item);
+  focusState.intervalId = setInterval(tickFocus, 1000);
   if (typeof dialog.showModal === 'function') dialog.showModal();
+}
+
+// Backwards-compatible alias (older code/buttons may still call openFocusMode).
+function openFocusMode() { openFocus(); }
+
+function toggleFocusTimer() {
+  focusState.running = !focusState.running;
+  const btn = $('#focusToggleBtn');
+  if (btn) btn.textContent = focusState.running ? 'Pause' : 'Resume';
+}
+
+function finishFocus() {
+  const id = focusState.id;
+  stopFocusTimer();
+  $('#focusDialog').close();
+  if (id) toggleDone(id);
 }
 
 /* ---------------- Excel ---------------- */
@@ -855,8 +1016,10 @@ function handleItemAction(event) {
   if (action === 'edit') { closeAllMenus(); editItem(id); }
   if (action === 'delete') { closeAllMenus(); deleteItem(id); }
   if (action === 'toggle') toggleDone(id);
-  if (action === 'progress') { closeAllMenus(); updateStatus(id, 'In Progress'); }
-  if (action === 'focus') openFocusMode();
+  if (action === 'progress') { closeAllMenus(); openFocus(id); }
+  if (action === 'focus') openFocus(id);
+  if (action === 'focus-toggle') toggleFocusTimer();
+  if (action === 'focus-done') finishFocus();
 }
 
 function bindEvents() {
@@ -876,14 +1039,16 @@ function bindEvents() {
     event.preventDefault();
     try {
       const isEdit = Boolean($('#addEditingId').value);
+      const hasReminder = Boolean($('#addReminderAt').value);
       saveItem(buildItemFromDialog());
+      if (hasReminder) requestReminderPermission();
       $('#addDialog').close();
       showToast(isEdit ? 'Task updated' : 'Task added');
     } catch (error) { showToast(error.message); }
   });
 
   // Focus
-  $('#closeFocus').addEventListener('click', () => $('#focusDialog').close());
+  $('#closeFocus').addEventListener('click', () => { stopFocusTimer(); $('#focusDialog').close(); });
 
   // Cards (delegated)
   document.body.addEventListener('click', handleItemAction);
@@ -1000,6 +1165,7 @@ function init() {
   bindEvents();
   seedDemoData();
   renderAll();
+  startReminderEngine();
   registerServiceWorker();
   exposeStudyFlowApp();
 }
