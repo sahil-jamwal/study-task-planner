@@ -38,7 +38,7 @@ Firebase Google login and Google Calendar permission are separate.
 ## Files
 
 ```text
-study-task-planner-cloud-sync/
+study-task-planner/
 ├── index.html
 ├── style.css
 ├── app.js
