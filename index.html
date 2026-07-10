@@ -11,7 +11,6 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="app.js" defer></script>
-  <script src="scheduler.js" defer></script>
   <script type="module" src="authService.js"></script>
   <script type="module" src="cloudSync.js"></script>
   <script type="module" src="googleCalendar.js"></script>
@@ -30,7 +29,7 @@
       <nav class="nav-list">
         <button class="nav-btn active" data-view="dashboard" type="button"><span class="nav-ico">◉</span> Today</button>
         <button class="nav-btn" data-view="tasks" type="button"><span class="nav-ico">✓</span> Tasks</button>
-        <button class="nav-btn" data-view="scheduler" type="button"><span class="nav-ico">◇</span> Plan</button>
+        <button class="nav-btn" data-view="progress" type="button"><span class="nav-ico">◔</span> Progress</button>
         <button class="nav-btn" data-view="settings" type="button"><span class="nav-ico">⚙</span> Settings</button>
       </nav>
 
@@ -133,119 +132,16 @@
           </section>
         </section>
 
-        <!-- ===================== PLAN (Smart Scheduler — preserved) ===================== -->
-        <section id="scheduler" class="view">
-          <div class="plan-intro-card">
-            <p class="eyebrow">Your StudyFlow superpower</p>
-            <h3>Turn a syllabus into a day-by-day plan</h3>
-            <p class="muted">Paste your topics, set how much time you have, and StudyFlow builds a realistic schedule — then those study sessions show up in Today automatically.</p>
-          </div>
-
-          <div class="scheduler-grid">
-            <section class="panel scheduler-form-panel">
-              <div class="panel-head">
-                <div>
-                  <p class="eyebrow">Syllabus to schedule</p>
-                  <h3>Smart Study Scheduler</h3>
-                </div>
-                <span class="pill">Free rule-based</span>
+        <!-- ===================== PROGRESS ===================== -->
+        <section id="progress" class="view">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Your completion at a glance</p>
+                <h3>Progress</h3>
               </div>
-
-              <form id="schedulerForm" class="form-grid">
-                <label class="full-width">Course / subject name *
-                  <input id="schedulerSubject" maxlength="80" placeholder="Example: SQL, Power BI, MSAT, English" required />
-                </label>
-                <label>Exam date
-                  <input id="schedulerExamDate" type="date" />
-                </label>
-                <label>Or available study days
-                  <input id="schedulerDays" type="number" min="1" max="365" placeholder="Example: 30" />
-                </label>
-                <label>Daily study hours *
-                  <input id="schedulerDailyHours" type="number" min="0.5" max="12" step="0.5" value="2" required />
-                </label>
-                <label>Revision preference
-                  <select id="schedulerRevision">
-                    <option value="weekly" selected>Weekly revision</option>
-                    <option value="every3">Revision every 3 study days</option>
-                    <option value="none">No auto revision</option>
-                  </select>
-                </label>
-                <label>Default reminder time
-                  <input id="schedulerReminderTime" type="time" value="19:00" />
-                </label>
-                <label>Buffer level
-                  <select id="schedulerBufferLevel">
-                    <option value="light">Light buffer</option>
-                    <option value="normal" selected>Normal buffer</option>
-                    <option value="heavy">Heavy buffer</option>
-                  </select>
-                </label>
-
-                <div class="preferred-days full-width">
-                  <p class="mini-label">Preferred study days</p>
-                  <div class="day-chip-row" id="preferredDays">
-                    <label><input type="checkbox" name="preferredDay" value="1" checked /> Mon</label>
-                    <label><input type="checkbox" name="preferredDay" value="2" checked /> Tue</label>
-                    <label><input type="checkbox" name="preferredDay" value="3" checked /> Wed</label>
-                    <label><input type="checkbox" name="preferredDay" value="4" checked /> Thu</label>
-                    <label><input type="checkbox" name="preferredDay" value="5" checked /> Fri</label>
-                    <label><input type="checkbox" name="preferredDay" value="6" checked /> Sat</label>
-                    <label><input type="checkbox" name="preferredDay" value="0" checked /> Sun</label>
-                  </div>
-                </div>
-
-                <label class="full-width">Syllabus topics *
-                  <textarea id="schedulerTopics" rows="9" placeholder="One topic per line. Optional format:&#10;Topic | Difficulty | Priority | Minutes | YouTube link | Assignment&#10;&#10;Example:&#10;SQL Joins | Hard | High | 90 | https://youtube.com/ | Practice 10 join questions&#10;Group By | Medium | High | 60 | | Solve 15 questions"></textarea>
-                </label>
-
-                <div class="topic-format full-width">
-                  <strong>Accepted format</strong>
-                  <p><code>Topic | Difficulty | Priority | Minutes | YouTube link | Assignment</code></p>
-                  <p class="muted">Skip any detail and StudyFlow uses safe defaults.</p>
-                </div>
-
-                <div class="form-actions full-width">
-                  <button class="primary-btn" type="submit">Generate schedule</button>
-                  <button id="loadSampleSyllabus" class="soft-btn" type="button">Load sample</button>
-                  <button id="clearSchedulerForm" class="soft-btn" type="button">Clear</button>
-                </div>
-              </form>
-            </section>
-
-            <section class="panel scheduler-result-panel">
-              <div class="panel-head">
-                <div>
-                  <p class="eyebrow">Generated output</p>
-                  <h3>Schedule preview</h3>
-                </div>
-                <div class="form-actions">
-                  <button id="saveGeneratedPlan" class="primary-btn" type="button" disabled>Save as tasks</button>
-                  <button id="clearGeneratedPlan" class="soft-btn" type="button" disabled>Clear preview</button>
-                </div>
-              </div>
-
-              <div id="scheduleSummary" class="scheduler-summary"></div>
-              <div id="scheduleWarnings" class="warning-list" hidden></div>
-              <div id="schedulePreview" class="schedule-preview"></div>
-            </section>
-          </div>
-
-          <div class="scheduler-bottom-grid">
-            <section class="panel">
-              <div class="panel-head">
-                <div><p class="eyebrow">Calendar style</p><h3>Plan calendar view</h3></div>
-              </div>
-              <div id="scheduleCalendarView" class="schedule-calendar-view"></div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <div><p class="eyebrow">Catch up</p><h3>Missed scheduler tasks</h3></div>
-                <button id="rescheduleAllMissed" class="soft-btn" type="button">Move missed to next day</button>
-              </div>
-              <div id="missedScheduleList" class="card-list"></div>
-            </section>
+            </div>
+            <div id="progressContent"></div>
           </div>
         </section>
 
@@ -316,7 +212,8 @@
               <div class="panel-head"><div><p class="eyebrow">Data safety</p><h3>Backup &amp; restore</h3></div></div>
               <p class="muted">Export a backup before switching devices or clearing your browser.</p>
               <div class="button-row">
-                <button id="exportBackup" class="primary-btn" type="button">Export JSON backup</button>
+                <button id="exportTasks" class="primary-btn" type="button">Export tasks (Excel/CSV)</button>
+                <button id="exportBackup" class="soft-btn" type="button">Export JSON backup</button>
                 <label class="file-action">Import JSON backup<input id="importBackup" type="file" accept="application/json" hidden /></label>
               </div>
             </section>
@@ -339,7 +236,7 @@
   <nav class="mobile-nav" aria-label="Mobile navigation">
     <button class="mobile-nav-btn active" data-view="dashboard" type="button"><span>◉</span>Today</button>
     <button class="mobile-nav-btn" data-view="tasks" type="button"><span>✓</span>Tasks</button>
-    <button class="mobile-nav-btn" data-view="scheduler" type="button"><span>◇</span>Plan</button>
+    <button class="mobile-nav-btn" data-view="progress" type="button"><span>◔</span>Progress</button>
     <button class="mobile-nav-btn" data-view="settings" type="button"><span>⚙</span>Settings</button>
   </nav>
 

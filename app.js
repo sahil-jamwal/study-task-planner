@@ -12,8 +12,7 @@ const DEFAULT_STATE = {
 
 const REQUIRED_COLUMNS = ['Task Title'];
 const TEMPLATE_COLUMNS = [
-  'Task Title', 'Category', 'Subject', 'Topic', 'YouTube Link', 'Assignment',
-  'Due Date', 'Reminder Date Time', 'Priority', 'Status', 'Estimated Minutes', 'Notes'
+  'Task Title', 'Subject', 'Due Date', 'Reminder Date Time', 'Estimated Minutes', 'YouTube Link', 'Assignment'
 ];
 
 let state = loadState();
@@ -336,8 +335,8 @@ function startReminderEngine() {
 }
 
 /* ---------------- Navigation ---------------- */
-const VIEW_TITLES = { dashboard: 'Today', tasks: 'Tasks', scheduler: 'Plan', settings: 'Settings' };
-const VIEW_REDIRECT = { study: 'tasks', assignments: 'tasks', videos: 'tasks', daily: 'dashboard', excel: 'settings' };
+const VIEW_TITLES = { dashboard: 'Today', tasks: 'Tasks', progress: 'Progress', settings: 'Settings' };
+const VIEW_REDIRECT = { study: 'tasks', assignments: 'tasks', videos: 'tasks', daily: 'dashboard', excel: 'settings', scheduler: 'progress', plan: 'progress' };
 
 function setView(viewId, options = {}) {
   if (VIEW_REDIRECT[viewId]) {
@@ -352,6 +351,7 @@ function setView(viewId, options = {}) {
   $$('.mobile-nav-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.view === viewId));
   $('#viewTitle').textContent = VIEW_TITLES[viewId] || 'Today';
   if (viewId === 'tasks') syncChipUI();
+  if (viewId === 'progress') renderProgress();
   closeAllMenus();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -408,6 +408,28 @@ function toggleDone(id) {
   item.syncStatus = window.StudyFlowCloudSync?.getUser?.() ? 'pending' : item.syncStatus;
   saveState();
   renderAll();
+  if (item.status === 'Done') celebrateCompletion(item);
+}
+
+const CHEERS = ['Nice work!', 'Done and dusted.', 'One more down.', 'Great going!', 'Keep it up!'];
+
+function celebrateCompletion(item) {
+  let message;
+  if (item.dueDate && item.dueDate > todayISO()) {
+    const days = daysBetween(todayISO(), item.dueDate);
+    message = days > 0
+      ? `You're ahead! That wasn't due for ${days} day${days > 1 ? 's' : ''}. 🎉`
+      : "You're ahead — nicely done! 🎉";
+  } else {
+    message = CHEERS[Math.floor(Math.random() * CHEERS.length)];
+  }
+  showToast(message);
+}
+
+function daysBetween(fromISO, toISO) {
+  const a = new Date(`${fromISO}T00:00:00`).getTime();
+  const b = new Date(`${toISO}T00:00:00`).getTime();
+  return Math.max(0, Math.round((b - a) / 86400000));
 }
 
 function updateStatus(id, status) {
@@ -677,6 +699,65 @@ function renderTasks() {
   $('#boardViewBtn').classList.toggle('active', Boolean(state.settings.boardView));
 }
 
+/* ---------------- Render: Progress (subject-wise) ---------------- */
+function subjectKey(item) {
+  return (item.subject && item.subject.trim()) || 'Other';
+}
+
+function completedAhead(item) {
+  return item.status === 'Done' && item.dueDate && getDatePart(item.completedAt) && getDatePart(item.completedAt) < item.dueDate;
+}
+
+function renderProgress() {
+  const wrap = $('#progressContent');
+  if (!wrap) return;
+
+  if (!state.items.length) {
+    wrap.innerHTML = emptyState('No subjects yet', 'Import your study plan or add tasks, and your progress will show here.', '+ Add task', 'add');
+    return;
+  }
+
+  const groups = new Map();
+  state.items.forEach((item) => {
+    const key = subjectKey(item);
+    if (!groups.has(key)) groups.set(key, { total: 0, done: 0 });
+    const g = groups.get(key);
+    g.total += 1;
+    if (item.status === 'Done') g.done += 1;
+  });
+
+  const totalAll = state.items.length;
+  const doneAll = state.items.filter((i) => i.status === 'Done').length;
+  const overallPct = totalAll ? Math.round((doneAll / totalAll) * 100) : 0;
+  const aheadCount = state.items.filter(completedAhead).length;
+
+  const rows = Array.from(groups.entries())
+    .map(([name, g]) => ({ name, ...g, pct: g.total ? Math.round((g.done / g.total) * 100) : 0 }))
+    .sort((a, b) => b.pct - a.pct || a.name.localeCompare(b.name));
+
+  const bars = rows.map((r) => `
+    <div class="subject-row">
+      <div class="subject-head">
+        <span class="subject-name">${escapeHTML(r.name)}</span>
+        <span class="subject-count">${r.done}/${r.total} · ${r.pct}%</span>
+      </div>
+      <div class="subject-bar"><span style="width:${r.pct}%"></span></div>
+    </div>`).join('');
+
+  wrap.innerHTML = `
+    <div class="progress-overview">
+      <div class="overview-ring" style="--pct:${overallPct}">
+        <strong>${overallPct}%</strong>
+        <span>overall</span>
+      </div>
+      <div class="overview-facts">
+        <p><strong>${doneAll}</strong> of <strong>${totalAll}</strong> tasks done</p>
+        ${aheadCount ? `<p class="ahead-note">🎉 ${aheadCount} finished ahead of time</p>` : '<p class="muted">Finish a task early to build a buffer.</p>'}
+      </div>
+    </div>
+    <div class="subject-list">${bars}</div>`;
+}
+
 /* ---------------- Render all ---------------- */
 function renderAll() {
   const dateText = new Date(`${todayISO()}T00:00:00`).toLocaleDateString('en-IN', {
@@ -686,7 +767,7 @@ function renderAll() {
   updateAccountBadge();
   renderToday();
   renderTasks();
-  if (typeof renderScheduler === 'function') renderScheduler();
+  renderProgress();
 }
 
 function updateAccountBadge() {
@@ -885,10 +966,10 @@ function renderExcelPreview(rows, errors = []) {
   const header = TEMPLATE_COLUMNS.map((col) => `<th>${escapeHTML(col)}</th>`).join('');
   const body = rows.slice(0, 25).map((item) => `
     <tr>
-      <td>${escapeHTML(item.title)}</td><td>${escapeHTML(item.category)}</td><td>${escapeHTML(item.subject)}</td>
-      <td>${escapeHTML(item.topic)}</td><td>${escapeHTML(item.youtubeLink)}</td><td>${escapeHTML(item.assignment)}</td>
-      <td>${escapeHTML(item.dueDate)}</td><td>${escapeHTML(item.reminderAt)}</td><td>${escapeHTML(item.priority)}</td>
-      <td>${escapeHTML(item.status)}</td><td>${escapeHTML(item.estimateMinutes)}</td><td>${escapeHTML(item.notes)}</td>
+      <td>${escapeHTML(item.title)}</td><td>${escapeHTML(item.subject)}</td>
+      <td>${escapeHTML(item.dueDate)}</td><td>${escapeHTML(item.reminderAt)}</td>
+      <td>${escapeHTML(item.estimateMinutes)}</td><td>${escapeHTML(item.youtubeLink)}</td>
+      <td>${escapeHTML(item.assignment)}</td>
     </tr>`).join('');
   $('#excelPreview').innerHTML = `
     <table class="preview-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>
@@ -942,11 +1023,25 @@ function clearExcelPreview() {
 function downloadCSVTemplate() {
   const sample = [
     TEMPLATE_COLUMNS,
-    ['Watch SQL Joins Video', 'Study', 'SQL', 'Joins', 'https://youtube.com/', 'Practice 10 join questions', todayISO(), `${todayISO()} 19:00`, 'High', 'Not Started', '45', 'Revise after practice'],
-    ['Complete Power BI Assignment', 'Assignment', 'Power BI', 'DAX', '', 'Create 3 measures', todayISO(), '', 'Medium', 'Not Started', '60', '']
+    ['Python loops practice', 'Python', todayISO(), `${todayISO()} 19:00`, '45', 'https://youtube.com/', 'Solve 10 loop problems after the video'],
+    ['CT flowcharts', 'Computational Thinking', addDaysLocal(todayISO(), 1), '', '60', '', 'Draw 2 flowcharts by hand first']
   ];
   const csv = sample.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n');
-  downloadBlob(csv, 'studyflow_excel_template.csv', 'text/csv');
+  downloadBlob(csv, 'studyflow_template.csv', 'text/csv');
+}
+
+function exportTasksCSV() {
+  if (!state.items.length) { showToast('No tasks to export yet'); return; }
+  const rows = [TEMPLATE_COLUMNS];
+  state.items.forEach((item) => {
+    rows.push([
+      item.title, item.subject, item.dueDate, item.reminderAt,
+      item.estimateMinutes, item.youtubeLink, item.assignment
+    ]);
+  });
+  const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(',')).join('\n');
+  downloadBlob(csv, `studyflow_tasks_${todayISO()}.csv`, 'text/csv');
+  showToast('Tasks exported to CSV');
 }
 
 function downloadBlob(content, filename, type) {
@@ -1122,6 +1217,7 @@ function bindEvents() {
 
   // Backup + danger
   $('#exportBackup').addEventListener('click', exportBackup);
+  $('#exportTasks')?.addEventListener('click', exportTasksCSV);
   $('#importBackup').addEventListener('change', (event) => importBackup(event.target.files[0]));
   $('#clearCompleted').addEventListener('click', () => {
     const removed = state.items.filter((item) => item.status === 'Done');
