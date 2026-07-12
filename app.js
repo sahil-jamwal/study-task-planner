@@ -694,26 +694,9 @@ function renderTasks() {
 
   const emptyMsg = state.items.length
     ? emptyState('No matching tasks', 'Try a different filter or search.', null)
-    : emptyState('No tasks yet', 'Capture your first task — it takes seconds.', '+ Add task', 'add');
+    : emptyState('No tasks yet', 'Import your plan or add a task — it takes seconds.', '+ Add task', 'add');
 
   $('#allItems').innerHTML = items.length ? items.map((item) => itemCard(item)).join('') : emptyMsg;
-
-  const statuses = ['Not Started', 'In Progress', 'Done'];
-  $('#boardItems').innerHTML = statuses.map((status) => {
-    const columnItems = items.filter((item) => item.status === status);
-    return `
-      <section class="board-column">
-        <h4>${escapeHTML(status)} <span class="pill">${columnItems.length}</span></h4>
-        <div class="card-list">
-          ${columnItems.length ? columnItems.map((item) => itemCard(item)).join('') : '<p class="muted small">Empty</p>'}
-        </div>
-      </section>`;
-  }).join('');
-
-  $('#allItems').hidden = Boolean(state.settings.boardView);
-  $('#boardItems').hidden = !state.settings.boardView;
-  $('#listViewBtn').classList.toggle('active', !state.settings.boardView);
-  $('#boardViewBtn').classList.toggle('active', Boolean(state.settings.boardView));
 }
 
 /* ---------------- Render: Progress (subject-wise) ---------------- */
@@ -1123,6 +1106,12 @@ function handleItemAction(event) {
     const willOpen = menu.hidden;
     closeAllMenus();
     menu.hidden = !willOpen;
+    if (willOpen) {
+      // If there isn't room below, open upward so it never runs off-screen.
+      const rect = button.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      menu.classList.toggle('flip-up', spaceBelow < 240);
+    }
     return;
   }
   if (action === 'edit') { closeAllMenus(); editItem(id); }
@@ -1173,7 +1162,16 @@ function bindEvents() {
       const target = emptyBtn.dataset.emptyAction;
       if (target === 'add') openAddDialog(); else if (target) setView(target);
     }
-    if (e.target.closest('[data-overdue-jump]')) { setView('tasks'); $('#whenFilter').value = 'overdue'; renderTasks(); }
+    if (e.target.closest('[data-overdue-jump]')) {
+      // Reset every other filter, otherwise the overdue items stay hidden behind them.
+      activeChip = 'all';
+      activeStatus = 'active';
+      setView('tasks');
+      $('#searchInput').value = '';
+      $('#whenFilter').value = 'overdue';
+      renderTasks();
+      showToast('Showing overdue tasks');
+    }
   });
 
   // Tasks chips + filters
@@ -1195,9 +1193,6 @@ function bindEvents() {
     el.addEventListener('input', () => { id === 'todaySort' ? renderToday() : renderTasks(); });
     el.addEventListener('change', () => { id === 'todaySort' ? renderToday() : renderTasks(); });
   });
-
-  $('#listViewBtn').addEventListener('click', () => { state.settings.boardView = false; saveState(); renderTasks(); });
-  $('#boardViewBtn').addEventListener('click', () => { state.settings.boardView = true; saveState(); renderTasks(); });
 
   // Reflection note
   $('#saveReflection')?.addEventListener('click', () => {

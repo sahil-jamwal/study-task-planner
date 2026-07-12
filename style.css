@@ -1724,3 +1724,60 @@ body::before {
 }
 .import-inline[hidden] { display: none; }
 .import-inline .upload-box { margin-bottom: 10px; }
+
+/* =========================================================
+   FIXES: overflow menu + hidden-attribute reliability
+   ========================================================= */
+
+/* The [hidden] attribute must always beat display rules. */
+[hidden] { display: none !important; }
+
+/* Card is the positioning context so menus can never escape it. */
+.item-card { position: relative; }
+.card-menu-wrap { position: relative; }
+
+.card-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 60;
+  min-width: 172px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+  display: grid;
+  gap: 2px;
+}
+.card-menu:not([hidden]) { display: grid; }
+
+/* Near the bottom of the list, open upward instead of overflowing. */
+.card-menu.flip-up { top: auto; bottom: calc(100% + 6px); }
+
+.card-menu button,
+.card-menu a {
+  display: block;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 9px;
+  font-weight: 650;
+  font-size: 0.88rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.card-menu button:hover,
+.card-menu a:hover { background: var(--surface-soft); }
+.card-menu .danger { color: var(--red); }
+
+/* Long assignment text must wrap, not stretch the card. */
+.item-assignment,
+.next-up-assignment {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
