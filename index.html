@@ -6,7 +6,10 @@
   <meta name="description" content="Calm daily study and task planner. Plan your syllabus, see what's next, get it done." />
   <title>StudyFlow</title>
   <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#2563eb" />
+  <meta name="theme-color" content="#1B1F3B" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -102,11 +105,30 @@
               <span id="resultCount" class="pill">0 items</span>
             </div>
 
-            <div class="chip-row" id="taskChips" role="tablist" aria-label="Filter by type">
+            <div class="tasks-toolbar">
+              <button id="toggleImport" class="mini-btn" type="button">⇧ Import from Excel</button>
+              <button id="exportTasks" class="mini-btn" type="button">⇩ Export to Excel</button>
+            </div>
+
+            <div id="importInline" class="import-inline" hidden>
+              <div class="upload-box" id="dropZone">
+                <input id="excelFile" type="file" accept=".xlsx,.xls,.csv" />
+                <strong>Upload your study plan</strong>
+                <p class="muted">.xlsx, .xls or .csv — only “Task Title” is required.</p>
+              </div>
+              <div class="button-row">
+                <button id="downloadTemplate" class="soft-btn" type="button">Download template</button>
+              </div>
+              <div id="importSummary" class="import-summary" hidden></div>
+              <div id="excelPreview" class="preview-table-wrap"></div>
+              <div class="form-actions">
+                <button id="importRows" class="primary-btn" type="button" disabled>Import these rows</button>
+                <button id="clearPreview" class="soft-btn" type="button" disabled>Clear</button>
+              </div>
+            </div>
+
+            <div class="chip-row" id="taskChips" role="tablist" aria-label="Filter by subject">
               <button class="chip active" data-chip="all" type="button">All</button>
-              <button class="chip" data-chip="Study" type="button">Study</button>
-              <button class="chip" data-chip="Assignment" type="button">Assignments</button>
-              <button class="chip" data-chip="Video" type="button">Videos</button>
             </div>
 
             <div class="filters slim">
@@ -175,25 +197,7 @@
               </div>
             </section>
 
-            <details class="panel collapse-panel">
-              <summary><div><p class="eyebrow">Bulk import</p><h3>Import from Excel</h3></div><span class="pill">Optional</span></summary>
-              <div class="collapse-body">
-                <div class="upload-box" id="dropZone">
-                  <input id="excelFile" type="file" accept=".xlsx,.xls,.csv" />
-                  <strong>Upload a spreadsheet</strong>
-                  <p class="muted">.xlsx, .xls, or .csv. Only “Task Title” is required.</p>
-                </div>
-                <div class="button-row">
-                  <button id="downloadTemplate" class="soft-btn" type="button">Download template</button>
-                </div>
-                <div id="importSummary" class="import-summary" hidden></div>
-                <div id="excelPreview" class="preview-table-wrap"></div>
-                <div class="form-actions">
-                  <button id="importRows" class="primary-btn" type="button" disabled>Import preview rows</button>
-                  <button id="clearPreview" class="soft-btn" type="button" disabled>Clear preview</button>
-                </div>
-              </div>
-            </details>
+            
 
             <details class="panel collapse-panel">
               <summary><div><p class="eyebrow">Calendar automation</p><h3>Google Calendar</h3></div><span id="calendarStatusText" class="pill">Not connected</span></summary>
@@ -212,8 +216,7 @@
               <div class="panel-head"><div><p class="eyebrow">Data safety</p><h3>Backup &amp; restore</h3></div></div>
               <p class="muted">Export a backup before switching devices or clearing your browser.</p>
               <div class="button-row">
-                <button id="exportTasks" class="primary-btn" type="button">Export tasks (Excel/CSV)</button>
-                <button id="exportBackup" class="soft-btn" type="button">Export JSON backup</button>
+                <button id="exportBackup" class="primary-btn" type="button">Export JSON backup</button>
                 <label class="file-action">Import JSON backup<input id="importBackup" type="file" accept="application/json" hidden /></label>
               </div>
             </section>

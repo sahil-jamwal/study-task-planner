@@ -340,9 +340,6 @@ const VIEW_REDIRECT = { study: 'tasks', assignments: 'tasks', videos: 'tasks', d
 
 function setView(viewId, options = {}) {
   if (VIEW_REDIRECT[viewId]) {
-    if (viewId === 'study') activeChip = 'Study';
-    if (viewId === 'assignments') activeChip = 'Assignment';
-    if (viewId === 'videos') activeChip = 'Video';
     viewId = VIEW_REDIRECT[viewId];
   }
   if (options.chip) activeChip = options.chip;
@@ -537,10 +534,30 @@ function emptyState(title, text, actionLabel, actionView) {
 /* ---------------- Filters ---------------- */
 function matchesChip(item, chip) {
   if (chip === 'all') return true;
-  if (chip === 'Study') return item.category === 'Study';
-  if (chip === 'Assignment') return item.category === 'Assignment' || Boolean(item.assignment);
-  if (chip === 'Video') return Boolean(item.youtubeLink) && isHttpUrl(item.youtubeLink);
-  return true;
+  return subjectKey(item) === chip;
+}
+
+// Build the chip row from the subjects actually present in the user's tasks.
+function renderChips() {
+  const row = $('#taskChips');
+  if (!row) return;
+  const counts = new Map();
+  state.items.forEach((item) => {
+    const key = subjectKey(item);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  const subjects = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([name]) => name);
+
+  // If the selected chip no longer exists (e.g. after a delete), fall back to All.
+  if (activeChip !== 'all' && !subjects.includes(activeChip)) activeChip = 'all';
+
+  row.innerHTML = [
+    `<button class="chip ${activeChip === 'all' ? 'active' : ''}" data-chip="all" type="button">All</button>`,
+    ...subjects.map((name) =>
+      `<button class="chip ${activeChip === name ? 'active' : ''}" data-chip="${escapeHTML(name)}" type="button">${escapeHTML(name)}</button>`)
+  ].join('');
 }
 
 function getFilteredItems() {
@@ -614,9 +631,9 @@ function renderToday() {
   const shownPercent = hasToday ? progress : 0;
 
   const remaining = pendingToday.length;
-  $('#greetingText').textContent = remaining
-    ? `${greeting()}. ${remaining} thing${remaining > 1 ? 's' : ''} left today.`
-    : `${greeting()}. You're all clear for today.`;
+  $('#greetingText').innerHTML = remaining
+    ? `${escapeHTML(greeting())}. <em class="accent-word">${remaining} thing${remaining > 1 ? 's' : ''}</em> left today.`
+    : `${escapeHTML(greeting())}. You're all clear for today.`;
   $('#todayProgressBar').style.width = `${shownPercent}%`;
   $('#todayProgressText').textContent = hasToday ? `${progress}%` : 'No tasks due';
   $('#sidebarProgressBar').style.width = `${shownPercent}%`;
@@ -666,7 +683,7 @@ function renderToday() {
 
 /* ---------------- Render: Tasks ---------------- */
 function syncChipUI() {
-  $$('#taskChips .chip').forEach((c) => c.classList.toggle('active', c.dataset.chip === activeChip));
+  renderChips();
   $$('#statusSeg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.status === activeStatus));
 }
 
@@ -1191,6 +1208,10 @@ function bindEvents() {
   });
 
   // Excel
+  $('#toggleImport')?.addEventListener('click', () => {
+    const panel = $('#importInline');
+    if (panel) panel.hidden = !panel.hidden;
+  });
   $('#excelFile').addEventListener('change', (event) => handleExcelFile(event.target.files[0]));
   $('#downloadTemplate').addEventListener('click', downloadCSVTemplate);
   $('#clearPreview').addEventListener('click', clearExcelPreview);
