@@ -512,16 +512,7 @@ function itemCard(item, options = {}) {
         ${item.assignment && options.showAssignment !== false ? `<p class="item-assignment">${escapeHTML(item.assignment)}</p>` : ''}
         ${tagBits.length ? `<div class="tag-row">${tagBits.join('')}</div>` : ''}
       </div>
-      <div class="card-menu-wrap">
-        <button class="menu-btn" data-action="menu" data-id="${escapeHTML(item.id)}" type="button" aria-label="More actions">⋯</button>
-        <div class="card-menu" hidden>
-          <button data-action="edit" data-id="${escapeHTML(item.id)}" type="button">Edit</button>
-          ${!done ? `<button data-action="progress" data-id="${escapeHTML(item.id)}" type="button">${inProgress ? 'In progress' : 'Start'}</button>` : ''}
-          ${videoUrl ? `<a href="${escapeHTML(videoUrl)}" target="_blank" rel="noopener">Open video</a>` : ''}
-          ${calendarUrl ? `<a href="${escapeHTML(calendarUrl)}" target="_blank" rel="noopener">Add to Calendar</a>` : ''}
-          <button class="danger" data-action="delete" data-id="${escapeHTML(item.id)}" type="button">Delete</button>
-        </div>
-      </div>
+      <button class="menu-btn" data-action="menu" data-id="${escapeHTML(item.id)}" type="button" aria-label="More actions for ${escapeHTML(item.title)}">⋯</button>
     </article>
   `;
 }
@@ -842,10 +833,33 @@ function buildItemFromDialog() {
   });
 }
 
-/* ---------------- Overflow menus ---------------- */
-function closeAllMenus(except) {
-  $$('.card-menu').forEach((menu) => { if (menu !== except) menu.hidden = true; });
+/* ---------------- Action sheet (replaces floating dropdown menus) ---------------- */
+function openActionSheet(id) {
+  const item = state.items.find((entry) => entry.id === id);
+  if (!item) return;
+  const done = item.status === 'Done';
+  const videoUrl = item.youtubeLink && isHttpUrl(item.youtubeLink) ? item.youtubeLink : '';
+  const calendarUrl = getCalendarUrl(item);
+
+  $('#sheetTitle').textContent = item.title;
+  $('#sheetActions').innerHTML = `
+    <button class="sheet-btn" data-action="edit" data-id="${escapeHTML(item.id)}" type="button"><span>✎</span> Edit</button>
+    ${!done ? `<button class="sheet-btn" data-action="progress" data-id="${escapeHTML(item.id)}" type="button"><span>▶</span> Start &amp; focus</button>` : ''}
+    ${videoUrl ? `<a class="sheet-btn" href="${escapeHTML(videoUrl)}" target="_blank" rel="noopener"><span>▶</span> Open video</a>` : ''}
+    ${calendarUrl ? `<a class="sheet-btn" href="${escapeHTML(calendarUrl)}" target="_blank" rel="noopener"><span>📅</span> Add to Calendar</a>` : ''}
+    <button class="sheet-btn danger" data-action="delete" data-id="${escapeHTML(item.id)}" type="button"><span>🗑</span> Delete</button>
+  `;
+  const dialog = $('#actionSheet');
+  if (typeof dialog.showModal === 'function') dialog.showModal();
 }
+
+function closeActionSheet() {
+  const dialog = $('#actionSheet');
+  if (dialog?.open) dialog.close();
+}
+
+// Kept for compatibility; no floating menus remain.
+function closeAllMenus() { /* no-op: menus replaced by the action sheet */ }
 
 /* ---------------- Focus mode with timer ---------------- */
 let focusState = { id: null, intervalId: null, remaining: 0, elapsed: 0, running: false, mode: 'up' };
@@ -1102,22 +1116,13 @@ function handleItemAction(event) {
   const action = button.dataset.action;
   if (action === 'menu') {
     event.stopPropagation();
-    const menu = button.parentElement.querySelector('.card-menu');
-    const willOpen = menu.hidden;
-    closeAllMenus();
-    menu.hidden = !willOpen;
-    if (willOpen) {
-      // If there isn't room below, open upward so it never runs off-screen.
-      const rect = button.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      menu.classList.toggle('flip-up', spaceBelow < 240);
-    }
+    openActionSheet(id);
     return;
   }
-  if (action === 'edit') { closeAllMenus(); editItem(id); }
-  if (action === 'delete') { closeAllMenus(); deleteItem(id); }
+  if (action === 'edit') { closeActionSheet(); editItem(id); }
+  if (action === 'delete') { closeActionSheet(); deleteItem(id); }
   if (action === 'toggle') toggleDone(id);
-  if (action === 'progress') { closeAllMenus(); openFocus(id); }
+  if (action === 'progress') { closeActionSheet(); openFocus(id); }
   if (action === 'focus') openFocus(id);
   if (action === 'focus-toggle') toggleFocusTimer();
   if (action === 'focus-done') finishFocus();
@@ -1150,10 +1155,11 @@ function bindEvents() {
 
   // Focus
   $('#closeFocus').addEventListener('click', () => { stopFocusTimer(); $('#focusDialog').close(); });
+  $('#closeSheet')?.addEventListener('click', closeActionSheet);
+  $('#actionSheet')?.addEventListener('click', (e) => { if (e.target.id === 'actionSheet') closeActionSheet(); });
 
   // Cards (delegated)
   document.body.addEventListener('click', handleItemAction);
-  document.addEventListener('click', (e) => { if (!e.target.closest('.card-menu-wrap')) closeAllMenus(); });
 
   // Empty-state action buttons
   document.body.addEventListener('click', (e) => {
