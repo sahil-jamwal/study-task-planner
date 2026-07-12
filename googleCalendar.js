@@ -220,6 +220,32 @@ async function syncItemList(items) {
   app()?.showToast(`${success}/${items.length} calendar events synced.`);
 }
 
+// Delete the Google Calendar event linked to a task (best effort).
+// Called when a task is deleted in StudyFlow so the calendar stays in sync.
+async function deleteEventForItem(item) {
+  const eventId = item?.googleCalendarEventId;
+  if (!eventId) return false;
+  try {
+    if (!CALENDAR_STATE.accessToken || Date.now() >= CALENDAR_STATE.tokenExpiresAt - 60000) {
+      if (!isGoogleCalendarConfigured() || !window.google?.accounts?.oauth2) return false;
+      await requestToken(''); // silent token attempt; if it fails we skip quietly
+    }
+    const response = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`,
+      { method: 'DELETE', headers: { Authorization: `Bearer ${CALENDAR_STATE.accessToken}` } }
+    );
+    // 404/410 mean the event is already gone — treat as success.
+    if (response.ok || response.status === 404 || response.status === 410) {
+      updateCalendarUI('Connected', 'Linked calendar event deleted.');
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.warn('Calendar delete skipped:', error?.message || error);
+    return false;
+  }
+}
+
 function friendlyCalendarError(error) {
   const text = error?.message || String(error || '');
   if (text.includes('popup')) return 'Popup was blocked. Allow popups for this website and try again.';
@@ -245,6 +271,7 @@ function bindCalendarButtons() {
 window.StudyFlowCalendar = {
   connectCalendar,
   createOrUpdateEvent,
+  deleteEventForItem,
   syncTodayEvents,
   syncPendingCalendarEvents,
   isConnected: () => CALENDAR_STATE.connected,

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="Calm daily study and task planner. Plan your syllabus, see what's next, get it done." />
   <title>StudyFlow</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231B1F3B'/%3E%3Cpath d='M18 41a14 14 0 0 1 28 0z' fill='%23F5A524'/%3E%3Crect x='13' y='43' width='38' height='4.5' rx='2.25' fill='%23FFF3DC'/%3E%3Cg stroke='%23F5A524' stroke-width='3.4' stroke-linecap='round'%3E%3Cpath d='M32 15v7M17 21l5 5M47 21l-5 5'/%3E%3C/g%3E%3C/svg%3E" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#1B1F3B" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -60,12 +61,18 @@
         <!-- ===================== TODAY ===================== -->
         <section id="dashboard" class="view active-view">
           <div class="today-hero">
-            <p class="eyebrow">Today first</p>
-            <h3 id="greetingText">Plan your day with clarity</h3>
-            <div class="today-progress">
-              <div class="today-progress-bar"><span id="todayProgressBar"></span></div>
-              <strong id="todayProgressText">0%</strong>
+            <div class="hero-top">
+              <div class="hero-words">
+                <p class="eyebrow">Today first</p>
+                <h3 id="greetingText">Plan your day with clarity</h3>
+                <p class="hero-sub" id="plannedTime"></p>
+              </div>
+              <div class="hero-ring" id="todayRing">
+                <strong id="todayProgressText">0%</strong>
+                <span>today</span>
+              </div>
             </div>
+            <div class="week-strip" id="weekStrip" aria-label="This week at a glance"></div>
           </div>
 
           <section class="next-up-block" id="nextUpBlock">
@@ -108,6 +115,7 @@
             <div class="tasks-toolbar">
               <button id="toggleImport" class="mini-btn" type="button">⇧ Import from Excel</button>
               <button id="exportTasks" class="mini-btn" type="button">⇩ Export to Excel</button>
+              <button id="syncAllCalendar" class="mini-btn" type="button">📅 Add all to Calendar</button>
             </div>
 
             <div id="importInline" class="import-inline" hidden>

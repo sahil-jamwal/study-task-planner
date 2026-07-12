@@ -375,13 +375,19 @@ function deleteItem(id) {
   if (index < 0) return;
   const [removed] = state.items.splice(index, 1);
   window.StudyFlowCloudSync?.deleteTask?.(id);
+  // Keep Google Calendar in sync: delete the linked event too (best effort).
+  if (removed.googleCalendarEventId) {
+    window.StudyFlowCalendar?.deleteEventForItem?.(removed);
+    removed.googleCalendarEventId = '';
+    removed.calendarSyncStatus = 'not_synced';
+  }
   saveState();
   renderAll();
   showToast(`Deleted “${removed.title}”`, () => {
     state.items.splice(Math.min(index, state.items.length), 0, removed);
     saveState();
     renderAll();
-    showToast('Restored');
+    showToast('Restored (re-sync to recreate its calendar event)');
   });
 }
 
@@ -613,6 +619,43 @@ function greeting() {
   return 'Good evening';
 }
 
+function renderWeekStrip() {
+  const wrap = $('#weekStrip');
+  if (!wrap) return;
+  const days = [];
+  for (let i = 0; i < 7; i += 1) {
+    const iso = addDaysLocal(todayISO(), i);
+    const dayTasks = state.items.filter((t) => getItemDate(t) === iso);
+    const done = dayTasks.filter((t) => t.status === 'Done').length;
+    const allDone = dayTasks.length > 0 && done === dayTasks.length;
+    const label = new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short' });
+    const dots = Math.min(dayTasks.length, 4);
+    days.push(`
+      <div class="wday ${i === 0 ? 'is-today' : ''} ${allDone ? 'is-complete' : ''}" title="${dayTasks.length} task${dayTasks.length === 1 ? '' : 's'}">
+        <span class="wd-label">${escapeHTML(label)}</span>
+        <span class="wd-num">${iso.slice(8, 10)}</span>
+        <span class="wd-dots">${'<i></i>'.repeat(dots)}</span>
+      </div>`);
+  }
+  wrap.innerHTML = days.join('');
+}
+
+function rolloverOverdue() {
+  const overdue = state.items.filter(isOverdue);
+  if (!overdue.length) { showToast('Nothing overdue'); return; }
+  const today = todayISO();
+  overdue.forEach((item) => {
+    item.dueDate = today;
+    if (item.reminderAt) item.reminderAt = today + item.reminderAt.slice(10);
+    if (item.scheduledDate) item.scheduledDate = today;
+    item.updatedAt = nowISO();
+    item.syncStatus = window.StudyFlowCloudSync?.getUser?.() ? 'pending' : item.syncStatus;
+  });
+  saveState();
+  renderAll();
+  showToast(`${overdue.length} task${overdue.length > 1 ? 's' : ''} moved to today`);
+}
+
 function renderToday() {
   const todayItems = sortTodayItems(state.items.filter((item) => (isDueToday(item) || isOverdue(item))));
   const pendingToday = todayItems.filter(isPending);
@@ -623,12 +666,23 @@ function renderToday() {
 
   const remaining = pendingToday.length;
   $('#greetingText').innerHTML = remaining
-    ? `${escapeHTML(greeting())}. <em class="accent-word">${remaining} thing${remaining > 1 ? 's' : ''}</em> left today.`
-    : `${escapeHTML(greeting())}. You're all clear for today.`;
-  $('#todayProgressBar').style.width = `${shownPercent}%`;
-  $('#todayProgressText').textContent = hasToday ? `${progress}%` : 'No tasks due';
+    ? `${escapeHTML(greeting())}, Sahil. <em class="accent-word">${remaining} thing${remaining > 1 ? 's' : ''}</em> left today.`
+    : `${escapeHTML(greeting())}, Sahil. You're all clear for today.`;
+
+  // Ring + planned time
+  const ring = $('#todayRing');
+  if (ring) ring.style.setProperty('--pct', shownPercent);
+  $('#todayProgressText').textContent = hasToday ? `${progress}%` : '—';
+  const plannedMins = pendingToday.reduce((sum, item) => sum + (Number(item.estimateMinutes) || 0), 0);
+  const plannedEl = $('#plannedTime');
+  if (plannedEl) {
+    plannedEl.textContent = plannedMins
+      ? `~${Math.floor(plannedMins / 60) ? `${Math.floor(plannedMins / 60)}h ` : ''}${plannedMins % 60 ? `${plannedMins % 60}m` : ''} of study planned`
+      : (hasToday ? '' : 'Nothing scheduled for today');
+  }
   $('#sidebarProgressBar').style.width = `${shownPercent}%`;
   $('#sidebarProgressText').textContent = hasToday ? `${progress}%` : '—';
+  renderWeekStrip();
 
   // Next up = first pending item (today/overdue first, else any pending)
   const nextUp = pendingToday[0] || state.items.filter(isPending).sort(sortSmart)[0];
@@ -655,7 +709,7 @@ function renderToday() {
   const nudge = $('#overdueNudge');
   if (overdue.length) {
     nudge.hidden = false;
-    nudge.innerHTML = `<span>⚠ ${overdue.length} overdue item${overdue.length > 1 ? 's' : ''}.</span> <button class="link-btn" data-overdue-jump type="button">Review</button>`;
+    nudge.innerHTML = `<span>⚠ ${overdue.length} overdue item${overdue.length > 1 ? 's' : ''}.</span> <button class="link-btn" data-rollover type="button">Move to today</button> <button class="link-btn" data-overdue-jump type="button">Review</button>`;
   } else {
     nudge.hidden = true;
   }
@@ -1168,6 +1222,7 @@ function bindEvents() {
       const target = emptyBtn.dataset.emptyAction;
       if (target === 'add') openAddDialog(); else if (target) setView(target);
     }
+    if (e.target.closest('[data-rollover]')) { rolloverOverdue(); return; }
     if (e.target.closest('[data-overdue-jump]')) {
       // Reset every other filter, otherwise the overdue items stay hidden behind them.
       activeChip = 'all';
@@ -1240,11 +1295,21 @@ function bindEvents() {
   // Backup + danger
   $('#exportBackup').addEventListener('click', exportBackup);
   $('#exportTasks')?.addEventListener('click', exportTasksCSV);
+  $('#syncAllCalendar')?.addEventListener('click', () => {
+    if (window.StudyFlowCalendar?.syncPendingCalendarEvents) {
+      window.StudyFlowCalendar.syncPendingCalendarEvents();
+    } else {
+      showToast('Calendar service is still loading — try again in a moment.');
+    }
+  });
   $('#importBackup').addEventListener('change', (event) => importBackup(event.target.files[0]));
   $('#clearCompleted').addEventListener('click', () => {
     const removed = state.items.filter((item) => item.status === 'Done');
     if (!removed.length) { showToast('Nothing completed to clear'); return; }
     const deletedIds = removed.map((item) => item.id);
+    removed.forEach((item) => {
+      if (item.googleCalendarEventId) window.StudyFlowCalendar?.deleteEventForItem?.(item);
+    });
     state.items = state.items.filter((item) => item.status !== 'Done');
     window.StudyFlowCloudSync?.deleteTasks?.(deletedIds);
     saveState(); renderAll();
@@ -1255,6 +1320,9 @@ function bindEvents() {
   });
   $('#deleteAll').addEventListener('click', () => {
     if (!confirm('Delete ALL tasks, study items, and notes? This cannot be undone.')) return;
+    state.items.forEach((item) => {
+      if (item.googleCalendarEventId) window.StudyFlowCalendar?.deleteEventForItem?.(item);
+    });
     state = cloneDefault();
     window.StudyFlowCloudSync?.deleteAllCloudTasks?.();
     saveState(); applyTheme(); renderAll();
