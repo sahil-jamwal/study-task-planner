@@ -248,6 +248,16 @@ function addDaysLocal(iso, days) {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
+/* Open a dialog pinned to the screen, with a fallback for browsers where showModal fails. */
+function openDialog(dialog) {
+  if (!dialog) return;
+  try {
+    if (dialog.open) dialog.close();
+    if (typeof dialog.showModal === 'function') { dialog.showModal(); return; }
+  } catch { /* fall through to attribute fallback */ }
+  dialog.setAttribute('open', '');
+}
+
 /* ---------------- Toast + Undo ---------------- */
 function showToast(message, undoFn) {
   const toast = $('#toast');
@@ -841,7 +851,7 @@ function openAddDialog(item = null) {
   // Expand advanced if any advanced field is set
   const hasAdvanced = item && (item.subject || item.topic || item.youtubeLink || item.assignment || item.estimateMinutes || item.notes || item.status === 'In Progress');
   setAdvanced(Boolean(hasAdvanced));
-  if (typeof dialog.showModal === 'function') dialog.showModal();
+  openDialog(dialog);
   setTimeout(() => $('#addTitle').focus(), 30);
 }
 
@@ -903,8 +913,7 @@ function openActionSheet(id) {
     ${calendarUrl ? `<a class="sheet-btn" href="${escapeHTML(calendarUrl)}" target="_blank" rel="noopener"><span>📅</span> Add to Calendar</a>` : ''}
     <button class="sheet-btn danger" data-action="delete" data-id="${escapeHTML(item.id)}" type="button"><span>🗑</span> Delete</button>
   `;
-  const dialog = $('#actionSheet');
-  if (typeof dialog.showModal === 'function') dialog.showModal();
+  openDialog($('#actionSheet'));
 }
 
 function closeActionSheet() {
@@ -981,7 +990,7 @@ function openFocus(itemId) {
   if (!item) {
     stopFocusTimer();
     $('#focusContent').innerHTML = emptyState('Nothing pending', 'You have no pending tasks right now.', null);
-    if (typeof dialog.showModal === 'function') dialog.showModal();
+    openDialog(dialog);
     return;
   }
 
@@ -1000,7 +1009,7 @@ function openFocus(itemId) {
   focusState = { id: item.id, intervalId: null, remaining: minutes * 60, elapsed: 0, running: true, mode: minutes > 0 ? 'down' : 'up' };
   renderFocus(item);
   focusState.intervalId = setInterval(tickFocus, 1000);
-  if (typeof dialog.showModal === 'function') dialog.showModal();
+  openDialog(dialog);
 }
 
 // Backwards-compatible alias (older code/buttons may still call openFocusMode).

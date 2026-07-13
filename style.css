@@ -1618,7 +1618,10 @@ body::before {
   background: radial-gradient(120% 100% at 80% -12%, rgba(245,165,36,0.16), rgba(245,165,36,0) 62%);
 }
 [data-theme="dark"] body::before { opacity: 0.5; }
-.app-shell, .mobile-nav, .fab { position: relative; z-index: 1; }
+.app-shell { position: relative; z-index: 1; }
+/* .mobile-nav and .fab must stay FIXED to the screen — never in page flow */
+.mobile-nav { position: fixed; z-index: 60; }
+.fab { position: fixed; z-index: 55; }
 
 /* ---- SIGNATURE: progress fills with warm light ---- */
 .today-progress-bar span,
@@ -2005,4 +2008,35 @@ html, body { max-width: 100%; overflow-x: hidden; }
   .hero-ring strong { font-size: 1.15rem; }
   .week-strip { gap: 5px; }
   .wd-num { font-size: 0.92rem; }
+}
+
+/* =========================================================
+   FIX: dialogs must be pinned to the SCREEN on every browser.
+   Some Android browsers place <dialog> at its document position
+   (bottom of the page) — this forces viewport positioning.
+   ========================================================= */
+dialog.modal, dialog.sheet {
+  position: fixed !important;
+  inset: 0;
+  margin: auto;
+  z-index: 120;
+  max-height: min(86vh, 720px);
+  overflow: auto;
+}
+dialog.sheet {
+  margin: auto auto 0 auto;      /* bottom sheet on phones */
+  max-height: 78vh;
+  overflow: visible;
+}
+@media (min-width: 801px) {
+  dialog.sheet { margin: auto; } /* centred panel on desktop */
+}
+dialog.sheet .sheet-card { max-height: 78vh; overflow: auto; }
+
+/* Fallback overlay if a browser lacks the ::backdrop top layer */
+dialog.modal[open], dialog.sheet[open] {
+  box-shadow: 0 0 0 100vmax rgba(27, 31, 59, 0.42);
+}
+dialog.modal[open]::backdrop, dialog.sheet[open]::backdrop {
+  background: rgba(27, 31, 59, 0.42);
 }

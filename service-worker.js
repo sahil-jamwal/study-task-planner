@@ -1,6 +1,6 @@
 /* StudyFlow service worker — network-first so users always get the latest version.
    Saved copies are used only as an offline fallback. */
-const CACHE_NAME = 'studyflow-shell-v9';
+const CACHE_NAME = 'studyflow-shell-v10';
 const SHELL_FILES = [
   './',
   './index.html',
