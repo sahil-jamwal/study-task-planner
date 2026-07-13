@@ -2040,3 +2040,43 @@ dialog.modal[open], dialog.sheet[open] {
 dialog.modal[open]::backdrop, dialog.sheet[open]::backdrop {
   background: rgba(27, 31, 59, 0.42);
 }
+
+/* =========================================================
+   FIX: sidebar must stay put while the content scrolls.
+   'sticky' drifted because the whole page was scrolling.
+   Now: sidebar is fixed; only the content column scrolls.
+   ========================================================= */
+@media (min-width: 801px) {
+  html, body { height: 100%; overflow: hidden; }   /* page itself never scrolls */
+
+  .app-shell {
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    position: sticky;          /* stays inside the grid column */
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;          /* scrolls on its own only if it's very tall */
+    overscroll-behavior: contain;
+  }
+
+  .main-area {
+    height: 100vh;
+    overflow-y: auto;          /* THE scroller: only this column moves */
+    overscroll-behavior: contain;
+  }
+
+  /* Sticky top bar so the title/Add button stay reachable too. */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  @supports not (background: color-mix(in srgb, red 50%, blue)) {
+    .topbar { background: var(--bg); }
+  }
+}
