@@ -666,6 +666,14 @@ function rolloverOverdue() {
   showToast(`${overdue.length} task${overdue.length > 1 ? 's' : ''} moved to today`);
 }
 
+// The greeting must use whoever is actually signed in — never a hardcoded name.
+function displayName() {
+  const user = window.StudyFlowCloudSync?.getUser?.() || window.StudyFlowAuth?.getCurrentUser?.();
+  const full = (user?.displayName || '').trim();
+  if (!full) return '';                 // signed out (or no name) -> no name in greeting
+  return full.split(/\s+/)[0];          // first name only
+}
+
 function renderToday() {
   const todayItems = sortTodayItems(state.items.filter((item) => (isDueToday(item) || isOverdue(item))));
   const pendingToday = todayItems.filter(isPending);
@@ -675,9 +683,11 @@ function renderToday() {
   const shownPercent = hasToday ? progress : 0;
 
   const remaining = pendingToday.length;
+  const name = displayName();
+  const hello = `${escapeHTML(greeting())}${name ? `, ${escapeHTML(name)}` : ''}`;
   $('#greetingText').innerHTML = remaining
-    ? `${escapeHTML(greeting())}, Sahil. <em class="accent-word">${remaining} thing${remaining > 1 ? 's' : ''}</em> left today.`
-    : `${escapeHTML(greeting())}, Sahil. You're all clear for today.`;
+    ? `${hello}. <em class="accent-word">${remaining} thing${remaining > 1 ? 's' : ''}</em> left today.`
+    : `${hello}. You're all clear for today.`;
 
   // Ring + planned time
   const ring = $('#todayRing');

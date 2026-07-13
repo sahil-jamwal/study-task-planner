@@ -39,6 +39,9 @@ function updateAuthUI(user, message = '') {
   setVisible('signOutGoogleBtn', configured && Boolean(user));
   setVisible('uploadLocalToCloudBtn', configured && Boolean(user));
   setVisible('syncNowBtn', configured && Boolean(user));
+
+  // The Today greeting shows the signed-in person's name, so refresh it on any auth change.
+  window.StudyFlowApp?.renderAll?.();
 }
 
 async function signInWithGoogle() {
