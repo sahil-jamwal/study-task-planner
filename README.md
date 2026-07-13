@@ -1,143 +1,104 @@
-# StudyFlow Planner - Cloud Sync + Google Calendar Upgrade
+<div align="center">
 
-StudyFlow is a free static personal task manager and study planner. This version keeps the existing LocalStorage app and adds optional Google sign-in, Firebase Firestore cloud sync, Google Calendar automatic event creation, and optional PWA files.
+# StudyFlow
 
-## What still works without login
+**A calm daily study planner. Open it, see what to study today, do it, watch each subject fill up.**
 
-- Dashboard
-- Task Manager
-- Study Planner
-- Assignment Tracker
-- Video Library
-- Daily Tracker
-- Excel upload
-- Smart Study Scheduler
-- Manual Google Calendar link
-- LocalStorage save
-- Backup/import
-- Dark mode
-- Mobile layout
+Plan your own study, track it by subject, and feel steady progress — without the clutter.
 
-## New upgrade features
+</div>
 
-- Google sign-in through Firebase Authentication
-- Firestore sync across laptop and phone
-- Safe upload/merge of existing LocalStorage data
-- Google Calendar automatic event creation after separate Calendar permission
-- Calendar sync status on each task
-- Manual Google Calendar link remains as fallback
-- PWA manifest and service worker for app-like install support
+---
 
-## Important concept
+## What it does
 
-Firebase Google login and Google Calendar permission are separate.
+- **Today** — your greeting, a progress ring, the one task to do next, a 7-day week strip, and today's list.
+- **Tasks** — everything in one place, filtered by your own subjects (Python, Computational Thinking, Reading…), with search and an Import/Export toolbar.
+- **Progress** — completion percentage per subject, plus a gentle cheer when you finish something ahead of time.
+- **Focus timer** — tap *Start* on any task for a distraction-free countdown.
+- **Reminders** — a browser notification at the time you set (while the app is open).
+- **Import / Export** — bring your plan in from Excel; export your tasks back out any time.
+- **Works offline**, installs like an app (PWA), and has a warm light + dark theme.
 
-- Firebase Auth signs the user into StudyFlow and identifies their cloud data.
-- Google Calendar OAuth asks for permission to create events in the user's Calendar.
+## Optional cloud features (need a free Firebase project)
 
-## Files
+- **Google sign-in** so your data is the same on phone and laptop.
+- **Live cross-device sync** — add or delete on one device, it updates on the other (deletes included).
+- **Google Calendar** — one tap to add tasks as calendar events; deleting a task removes its event too.
 
-```text
-study-task-planner-cloud-sync/
-├── index.html
-├── style.css
-├── app.js
-├── scheduler.js
-├── firebaseConfig.js
-├── firebaseService.js
-├── authService.js
-├── cloudSync.js
-├── googleCalendar.js
-├── manifest.json
-├── service-worker.js
-├── firestore.rules
-├── study_planner_excel_template.xlsx
-└── README.md
+Without signing in, StudyFlow saves everything to your browser and works fully on its own.
+
+---
+
+## Use it
+
+Just open the site. Add a task with **+ Add**, or bring your whole plan in via **Tasks -> Import from Excel**.
+
+**Excel columns** (only *Task Title* is required):
+
+| Task Title | Subject | Due Date | Reminder Date Time | Estimated Minutes | YouTube Link | Assignment |
+|------------|---------|----------|--------------------|-------------------|--------------|------------|
+
+Dates use `YYYY-MM-DD` (e.g. `2026-07-13`); reminders use `YYYY-MM-DD HH:MM`.
+
+---
+
+## Run it yourself (GitHub Pages)
+
+1. Put all the files in a repository.
+2. **Settings -> Pages ->** branch `main`, root folder, **Save**.
+3. Open the Pages URL. That's your live app.
+
+It runs as-is in local mode. Cloud sync and Calendar are optional and need the setup below.
+
+## Optional: enable cloud sync + calendar
+
+**Firebase**
+1. Create a project at the Firebase Console and add a Web app.
+2. Paste its config into `firebaseConfig.js`.
+3. **Authentication -> Sign-in method ->** enable **Google**.
+4. **Authentication -> Settings -> Authorized domains ->** add your Pages URL.
+5. **Firestore Database ->** create it, then paste `firestore.rules` into the **Rules** tab and **Publish**.
+
+**Google Calendar (optional)**
+1. In Google Cloud Console, enable the **Google Calendar API**.
+2. **Credentials ->** create an **OAuth client ID** (Web), add your Pages URL as an authorized JavaScript origin.
+3. Paste the client ID into `firebaseConfig.js`.
+
+> **Security note:** the Firebase API key and OAuth client ID in `firebaseConfig.js` are *public identifiers by design* — safe to ship. Your data is protected by the Firestore rules, so make sure they're actually **Published** in the console. Restrict the API key and OAuth origin to your own domain to protect your quota. If any secret was ever hardcoded here in the past, rotate it.
+
+---
+
+## Project files
+
+```
+index.html          - app shell and markup
+style.css           - Ink & Amber theme
+app.js              - all app logic (tasks, today, progress, focus, reminders, import/export)
+firebaseConfig.js   - your Firebase + OAuth config (you fill this in)
+firebaseService.js  - Firebase SDK setup
+authService.js      - Google sign-in
+cloudSync.js        - live Firestore sync (with soft-delete so deletes propagate)
+googleCalendar.js   - add / delete calendar events
+manifest.json       - PWA manifest
+service-worker.js   - offline cache (network-first, so updates show on a normal refresh)
+firestore.rules     - per-user security rules
 ```
 
-## Firebase setup
+## How syncing works
 
-1. Go to Firebase Console.
-2. Create a project.
-3. Add a Web app.
-4. Copy the Firebase config.
-5. Open `firebaseConfig.js` and replace the placeholder values.
-6. Go to Authentication > Sign-in method.
-7. Enable Google provider.
-8. Go to Authentication > Settings > Authorized domains.
-9. Add your GitHub Pages or Netlify domain.
-10. Go to Firestore Database.
-11. Create a Firestore database.
-12. Replace the default rules with the contents of `firestore.rules`.
+- **Local:** every change saves instantly to your browser and works offline.
+- **Cloud (signed in):** changes sync live across your devices; deletes use a soft-delete marker so they never silently reappear.
+- **Calendar (connected):** tasks with a date/time become calendar events; deleting a task removes its event.
 
-## Google Calendar setup
+## Good to know
 
-1. Go to Google Cloud Console.
-2. Select the same project or create a project.
-3. Enable Google Calendar API.
-4. Go to APIs & Services > OAuth consent screen.
-5. Configure consent screen.
-6. Go to APIs & Services > Credentials.
-7. Create OAuth client ID.
-8. Select Web application.
-9. Add your GitHub Pages/Netlify URL as Authorized JavaScript origin.
-10. Copy the OAuth client ID.
-11. Open `firebaseConfig.js`.
-12. Replace `PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com`.
+- Reminders fire while StudyFlow is open in the browser — a web app can't reliably alert you when fully closed.
+- Calendar access is granted per browser session and may need reconnecting after it expires.
+- Cloud sync resumes automatically when you're back online.
 
-## Firestore rules
+---
 
-Use the included `firestore.rules`. They allow each signed-in user to read/write only their own data under `users/{uid}`.
-
-Do not use test mode rules for real phone use.
-
-## Hosting on GitHub Pages
-
-1. Create a GitHub repository.
-2. Upload all files from this folder.
-3. Go to Settings > Pages.
-4. Select branch `main` and root folder.
-5. Save.
-6. Open the Pages URL.
-7. Add that URL to Firebase authorized domains.
-8. Add that URL to Google Cloud authorized JavaScript origins.
-
-## How sync works
-
-Local mode:
-
-```text
-Task added -> LocalStorage -> visible only on this browser/device
-```
-
-Cloud mode:
-
-```text
-Sign in -> choose Upload local data -> Firestore -> same account can load data on another device
-```
-
-Calendar mode:
-
-```text
-Connect Google Calendar -> task event created/updated -> Google Calendar sends phone notification
-```
-
-## Known limitations
-
-- The app remains frontend-only. There is no backend server.
-- Calendar access tokens are kept only in memory and may require reconnecting after expiry.
-- Calendar event delete sync is not added yet.
-- Offline changes are saved locally; cloud sync resumes when the app is open and online.
-- Firebase/Google configuration must be added by you before login and Calendar automation work.
-- If OAuth app is not verified, Google may show a testing/unverified app warning for sensitive scopes.
-
-## Best next upgrades
-
-- Better offline sync queue
-- Calendar event update/delete sync
-- Recurring calendar events
-- Google Tasks API integration
-- PWA icons
-- Weekly report charts
-- Weak topic tracker
-- AI syllabus cleanup prompt
+<div align="center">
+Built as a personal daily study companion — simple, calm, and yours.
+</div>
